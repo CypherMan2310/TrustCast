@@ -33,7 +33,7 @@ iniconfig==2.3.0
 joblib==1.6.0
 kiwisolver==1.5.1
 locket==1.0.0
-matplotlib==3.11.2
+matplotlib==3.10.9
 msgspec==0.22.0
 multiurl==0.3.9
 narwhals==2.26.0
