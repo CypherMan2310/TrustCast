@@ -1,8 +1,10 @@
 """Assemble ``truth_v1`` for a region and a list of IMD days.
 
-Rain: IMD gauge grid where the day exists in the local IMD files (``provisional=False``); otherwise
-IMERG Late remapped to the IMD grid (``provisional=True``). If neither is available the day is NaN.
-Tmax: IMD 1 deg -> 0.25 deg only; there is no satellite substitute, so missing IMD Tmax stays NaN.
+Rain, in order: IMD final yearly grid; IMD real-time daily grid (gauge-based, provisional);
+IMERG Late remapped to the IMD grid (satellite, provisional). ``provisional`` is True unless the
+IMD final grid was used; ``rain_source``/``tmax_source`` record the tier per day. If nothing is
+available: NaN. Tmax: IMD final 1 deg, else IMD real-time 0.5 deg, interpolated to 0.25 deg; no
+satellite substitute.
 Everything is masked to IMD land cells (cells where IMD rain is ever finite).
 """
 
@@ -24,6 +26,7 @@ from trustcast.log import event
 from trustcast.truth import imd, imerg
 
 log = logging.getLogger(__name__)
+SRC_NONE, SRC_IMD_FINAL, SRC_IMD_REALTIME, SRC_IMERG = 0, 1, 2, 3
 
 
 def imd_land_mask(root: Path, region: RegionConfig) -> xr.DataArray:
@@ -50,27 +53,36 @@ def build_truth(
         coords={"time": days, "lat": lats, "lon": lons},
     )
     tmax = rain.copy()
-    provisional = np.zeros(days.size, dtype=bool)
+    rain_src = np.full(days.size, SRC_NONE, dtype=np.int8)
+    tmax_src = np.full(days.size, SRC_NONE, dtype=np.int8)
+    sources = ["IMD gridded rainfall 0.25 deg (final)"]
 
+    # rain tier 1: IMD final yearly grids
     imd_rain = imd.load_imd(root, "rain", days)
-    have_imd = [
-        d
-        for d in days
-        if d in set(pd.DatetimeIndex(imd_rain.time.values))
-        and np.isfinite(imd_rain.sel(time=d).values).any()
-    ]
+    have = set(pd.DatetimeIndex(imd_rain.time.values))
+    have_imd = [d for d in days if d in have and np.isfinite(imd_rain.sel(time=d).values).any()]
     if have_imd:
         rain.loc[{"time": have_imd}] = imd.rain_on_region(
             imd_rain.sel(time=have_imd), region
         ).values
-    missing = days.difference(pd.DatetimeIndex(have_imd))
-    sources = ["IMD gridded rainfall 0.25 deg"]
+        rain_src[days.isin(have_imd)] = SRC_IMD_FINAL
+    # rain tier 2: IMD real-time (gauge) daily grids
+    missing = days[rain_src == SRC_NONE]
+    rt = imd.load_realtime(root, "rain", missing) if missing.size else None
+    if rt is not None:
+        ok = [pd.Timestamp(t) for t in rt.time.values if np.isfinite(rt.sel(time=t).values).any()]
+        if ok:
+            rain.loc[{"time": ok}] = imd.rain_on_region(rt.sel(time=ok), region).values
+            rain_src[days.isin(ok)] = SRC_IMD_REALTIME
+            sources.append("IMD real-time gridded rainfall 0.25 deg (provisional)")
+    # rain tier 3: IMERG satellite
+    missing = days[rain_src == SRC_NONE]
     if missing.size:
         try:
             sat = imerg.imerg_daily(missing, region, imerg_product)
             rain.loc[{"time": missing}] = sat.values
             filled = np.isfinite(sat.values).any(axis=(1, 2))
-            provisional[days.isin(missing[filled])] = True
+            rain_src[days.isin(missing[filled])] = SRC_IMERG
             sources.append(f"NASA GPM IMERG V07 {imerg_product} (provisional days)")
         except SourceUnavailable as e:
             event(
@@ -82,17 +94,35 @@ def build_truth(
                 error=str(e),
             )
 
+    # Tmax tier 1: IMD final 1 deg; tier 2: IMD real-time 0.5 deg. No satellite substitute.
     imd_t = imd.load_imd(root, "tmax", days)
     if imd_t.sizes["time"]:
-        t_days = pd.DatetimeIndex(imd_t.time.values)
-        tmax.loc[{"time": t_days}] = imd.tmax_on_region(imd_t, region).values
-        sources.append("IMD gridded Tmax 1.0 deg")
+        ok = [
+            pd.Timestamp(t)
+            for t in imd_t.time.values
+            if np.isfinite(imd_t.sel(time=t).values).any()
+        ]
+        if ok:
+            tmax.loc[{"time": ok}] = imd.tmax_on_region(imd_t.sel(time=ok), region).values
+            tmax_src[days.isin(ok)] = SRC_IMD_FINAL
+            sources.append("IMD gridded Tmax 1.0 deg (final)")
+    missing = days[tmax_src == SRC_NONE]
+    rt = imd.load_realtime(root, "tmax", missing) if missing.size else None
+    if rt is not None:
+        ok = [pd.Timestamp(t) for t in rt.time.values if np.isfinite(rt.sel(time=t).values).any()]
+        if ok:
+            tmax.loc[{"time": ok}] = imd.tmax_on_region(rt.sel(time=ok), region).values
+            tmax_src[days.isin(ok)] = SRC_IMD_REALTIME
+            sources.append("IMD real-time gridded Tmax 0.5 deg (provisional)")
+    provisional = rain_src != SRC_IMD_FINAL
 
     ds = xr.Dataset(
         {
             "rain_mm": rain.where(mask).astype(np.float32),
             "tmax_c": tmax.where(mask).astype(np.float32),
-            "provisional": ("time", provisional),
+            "provisional": ("time", provisional & (rain_src != SRC_NONE)),
+            "rain_source": ("time", rain_src),
+            "tmax_source": ("time", tmax_src),
         },
         attrs={
             "schema": TRUTH_SCHEMA,
@@ -103,6 +133,9 @@ def build_truth(
             "tmax_regrid_method": "IMD 1 deg: one-ring neighbour fill at coast, then bilinear; "
             "masked to IMD rain land cells",
             "rain_window": "24 h ending 03 UTC (08:30 IST) on `time`",
+            "source_codes": (
+                "0 none, 1 IMD final, 2 IMD real-time (gauge, provisional), 3 IMERG (satellite)"
+            ),
         },
     )
     ds["rain_mm"].attrs = {"units": "mm"}

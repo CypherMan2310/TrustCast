@@ -58,9 +58,12 @@ def preconditions(cfg, root, raw: dict) -> tuple[list[str], dict]:
                     n += int(np.isin(pd.DatetimeIndex(ds.init_time.values), want).sum())
             cov[f"{name}/{region}"] = round(n / len(want), 3)
     days = pd.date_range(t0, t1)
+    final = set(imd.available_days(root, "rain", [2026]))
+    realtime = {d for d in days if imd.realtime_path(root, "rain", d).exists()}
     cov["imd_rain_2026_fraction"] = round(
-        float(np.isin(days, imd.available_days(root, "rain", [2026])).mean()), 3
+        float(np.mean([d in final or d in realtime for d in days])), 3
     )
+    cov["imd_rain_2026_final_fraction"] = round(float(np.mean([d in final for d in days])), 3)
     # GEM stopped on 2026-05-26 at the provider, so it cannot reach full coverage
     low = [k for k, v in cov.items() if "/" in k and v < 0.8 and not k.startswith("gem_prev")]
     if low:
@@ -87,8 +90,8 @@ def main() -> int:
     problems, cov = preconditions(cfg, root, raw)
     if cov["imd_rain_2026_fraction"] < 1.0 and not args.allow_provisional_truth:
         problems.append(
-            f"IMD 2026 rain covers only {cov['imd_rain_2026_fraction']:.0%} of test days (the rest would be "
-            "IMERG-provisional); pass --allow-provisional-truth to accept and record this"
+            f"IMD 2026 rain (final or real-time) covers only {cov['imd_rain_2026_fraction']:.0%} of test "
+            "days (the rest would be IMERG satellite); pass --allow-provisional-truth to accept and record this"
         )
     print(json.dumps({"coverage": cov, "problems": problems}, indent=1))
     if args.dry_run:

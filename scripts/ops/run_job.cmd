@@ -22,6 +22,7 @@ if "%1"=="backfill_gefs" (
 )
 if "%1"=="truth" (
   %PY% scripts\download_imd_history.py --start 2026 --end 2026 >> %LOG% 2>&1
+  %PY% scripts\download_imd_realtime.py --start 2026-01-01 >> %LOG% 2>&1
   %PY% scripts\build_truth.py --start 2024-01 --end 2025-12 >> %LOG% 2>&1
   %PY% scripts\build_truth.py --start 2026-01 --end 2026-12 --allow-test --refresh-current >> %LOG% 2>&1
 )

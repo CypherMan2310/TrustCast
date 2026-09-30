@@ -197,3 +197,13 @@ item 2026-05-12; ECMWF forum confirmation 2026-05-06). Phase 8 reports before/af
 
 ### Basemap (dashboard only)
 CARTO raster basemaps (light_all / dark_all), attribution "© OpenStreetMap contributors © CARTO".
+
+### IMD real-time gridded data (2026 truth)
+| Item | Value |
+|---|---|
+| Access | `imdlib.get_real_data` → imdpune.gov.in/cmpg/Realtimedata/{Rainfall/rain.php, max/max.php} (POST) |
+| Grids | rain 0.25° (same 129 × 135 grid as final); **Tmax 0.5°** (61 × 61 from 7.5 N / 67.5 E) |
+| Format | one day per file, float32, lon fastest, latitude ascending; rain -999 missing, Tmax 99.9 missing |
+| Checked | 2026-09-30: 2026-06-15 and 2026-09-20 rain, 2026-05-20 Tmax downloaded; own reader equals imdlib after masking |
+| Status | gauge-based but provisional (fewer stations than the final analysis); flagged `rain_source = 2` |
+| Note | the real-time endpoint timed out earlier the same day; yearly 2026 files still unavailable |

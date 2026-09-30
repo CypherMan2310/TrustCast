@@ -172,9 +172,11 @@ IMD 0.25° rain grid: lat 6.5–38.5 N, lon 66.5–100.0 E, 129 × 135 (`IMD_RAI
 
 ### `truth_v1` (`validate_truth`, built by `truth/build.py`)
 - dims `(time, lat, lon)`; `time` = IMD day label; vars `rain_mm`, `tmax_c` (float32),
-  `provisional(time)` bool = rain from IMERG, not IMD gauges.
-- Rain: IMD where the day exists locally, else IMERG V07 Late (conservative 0.1°→0.25°, all 48
-  half-hours required). Tmax: IMD 1° → 0.25° (one-ring coastal fill + bilinear), never substituted.
+  `provisional(time)` bool = rain not from the IMD final grid; `rain_source(time)`, `tmax_source(time)`
+  int8: 0 none, 1 IMD final, 2 IMD real-time (gauge), 3 IMERG (satellite).
+- Rain tiers: IMD final yearly grid → IMD real-time daily grid → IMERG V07 Late (conservative
+  0.1°→0.25°, all 48 half-hours required). Tmax tiers: IMD final 1° → IMD real-time 0.5°
+  (one-ring coastal fill + bilinear to 0.25°); never a satellite substitute.
 - Masked to IMD land cells. attrs `schema, sources, licence, created_at, tmax_regrid_method`.
 
 ### Tmax pairing (verified on data 2026-09-30)

@@ -92,3 +92,38 @@ def test_lag_correlation_peaks_at_zero_for_aligned_labels():
     )
     r = lag_correlation(fc, truth)
     assert r[0] > 0.9 and r[0] > r[-1] and r[0] > r[1]
+
+
+def test_realtime_reader_and_truth_tiers(tmp_path, cfg):
+    """SYNTHETIC files: IMD final wins over real-time; real-time fills days the final file lacks."""
+    from trustcast.grid.schema import validate_truth
+    from trustcast.truth.build import SRC_IMD_FINAL, SRC_IMD_REALTIME, build_truth
+
+    g = imd.GRIDS["rain"]
+    final = np.full((3, g.nlat, g.nlon), 5.0, "<f4")  # Jan 1-3 2025: 5 mm
+    p = tmp_path / "truth" / "rain" / "2025.grd"
+    p.parent.mkdir(parents=True)
+    final.tofile(p)
+    for day, val in (
+        ("2025-01-03", 99.0),
+        ("2025-01-04", 7.0),
+    ):  # real-time for Jan 3 (ignored) and Jan 4
+        rp = imd.realtime_path(tmp_path, "rain", pd.Timestamp(day))
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        np.full((g.nlat, g.nlon), val, "<f4").tofile(rp)
+    gt = imd.RT_GRIDS["tmax"]
+    tp = imd.realtime_path(tmp_path, "tmax", pd.Timestamp("2025-01-04"))
+    tp.parent.mkdir(parents=True, exist_ok=True)
+    np.full((gt.nlat, gt.nlon), 33.0, "<f4").tofile(tp)
+    da = imd.read_realtime(tp, "tmax", pd.Timestamp("2025-01-04"))
+    assert da.shape == (1, 61, 61) and float(da.lat[-1]) == 37.5
+    ds = build_truth(tmp_path, pd.date_range("2025-01-02", "2025-01-04"), cfg.regions["rain_pilot"])
+    validate_truth(ds)
+    assert ds.rain_source.values.tolist() == [SRC_IMD_FINAL, SRC_IMD_FINAL, SRC_IMD_REALTIME]
+    assert ds.provisional.values.tolist() == [False, False, True]
+    assert (
+        float(ds.rain_mm.isel(time=1).mean()) == 5.0
+        and float(ds.rain_mm.isel(time=2).mean()) == 7.0
+    )
+    assert ds.tmax_source.values.tolist() == [0, 0, SRC_IMD_REALTIME]
+    assert float(ds.tmax_c.isel(time=2).mean()) == pytest.approx(33.0)

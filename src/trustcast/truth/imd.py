@@ -142,3 +142,71 @@ def available_days(root: Path, var: str, years: list[int]) -> pd.DatetimeIndex:
 def today_utc() -> dt.date:
     """Current UTC date (separate function for testability)."""
     return dt.datetime.now(dt.UTC).date()
+
+
+# ----------------------------------------------------------------------------- real-time grids
+# IMD real-time daily grids (imdpune.gov.in/cmpg/Realtimedata, via imdlib.get_real_data), verified
+# 2026-09-30: rain 0.25 deg on the same 129 x 135 grid; Tmax 0.5 deg, 61 x 61 from 7.5 N / 67.5 E.
+# One day per file: float32 little-endian, lon fastest, latitude ascending; missing codes as above.
+IMD_TEMP_0P5 = RegularGrid("imd_rt_0p5", 7.5, 67.5, 0.5, 61, 61)
+RT_GRIDS: dict[str, RegularGrid] = {"rain": IMD_RAIN_0P25, "tmax": IMD_TEMP_0P5}
+
+
+def realtime_path(root: Path, var: str, day: pd.Timestamp) -> Path:
+    """Where the real-time file of ``var`` for ``day`` is stored."""
+    return root / "truth" / "realtime" / var / f"{pd.Timestamp(day):%Y%m%d}.grd"
+
+
+def read_realtime(path: Path, var: str, day: pd.Timestamp) -> xr.DataArray:
+    """One real-time IMD day with missing codes masked."""
+    g = RT_GRIDS[var]
+    arr = np.fromfile(path, dtype="<f4")
+    if arr.size != g.nlat * g.nlon:
+        raise ValueError(f"{path}: {arr.size} values, expected {g.nlat * g.nlon}")
+    arr = arr.reshape(1, g.nlat, g.nlon).astype(np.float32)
+    arr[arr < -100] = np.nan
+    if var == "tmax":
+        arr[arr >= 60] = np.nan
+    return xr.DataArray(
+        arr,
+        dims=("time", "lat", "lon"),
+        coords={"time": [pd.Timestamp(day).normalize()], "lat": g.lats, "lon": g.lons},
+    )
+
+
+def load_realtime(root: Path, var: str, days: pd.DatetimeIndex) -> xr.DataArray | None:
+    """Real-time IMD days available locally among ``days`` (None if none)."""
+    parts = [
+        read_realtime(realtime_path(root, var, d), var, d)
+        for d in days
+        if realtime_path(root, var, d).exists() and realtime_path(root, var, d).stat().st_size > 0
+    ]
+    return xr.concat(parts, dim="time") if parts else None
+
+
+def download_realtime(root: Path, var: str, day: pd.Timestamp) -> Path | None:
+    """Fetch one real-time day via imdlib into staging and move it into place (None on failure)."""
+    import imdlib
+
+    staging = root / "truth" / "_staging_rt" / var
+    staging.mkdir(parents=True, exist_ok=True)
+    before = set(staging.glob("*"))
+    with contextlib.suppress(Exception):
+        imdlib.get_real_data(
+            var,
+            f"{pd.Timestamp(day):%Y-%m-%d}",
+            f"{pd.Timestamp(day):%Y-%m-%d}",
+            file_dir=str(staging),
+        )
+    new = [p for p in staging.rglob("*.grd") if p not in before and p.stat().st_size > 0]
+    if not new:
+        return None
+    dest = realtime_path(root, var, day)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(new[0]), dest)
+    try:
+        read_realtime(dest, var, day)
+    except ValueError:
+        dest.unlink()
+        return None
+    return dest
