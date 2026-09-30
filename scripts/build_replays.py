@@ -34,6 +34,9 @@ from trustcast.pipeline import config_from_selection, run_pipeline
 from trustcast.verify.assemble import assemble, climatology
 from trustcast.verify.data import TRUTH_DAY_OFFSET
 
+MIN_CELLS = 3
+MIN_COVERAGE = 0.5
+
 
 def _series(
     da: xr.DataArray, table: pd.DataFrame, did: str, days: pd.DatetimeIndex, off: int
@@ -61,6 +64,11 @@ def build(cfg, root, event_id: str, ev: dict) -> Path:
         b.truth.sel(time=slice(s0 - pd.Timedelta(days=10), s1 + pd.Timedelta(days=10))), table
     )
     win = obs_d[(obs_d.time >= s0) & (obs_d.time <= s1)]
+    # data-driven choice only among districts that are mostly inside the region and not tiny enclaves
+    size = table.groupby("district_id").agg(n=("weight", "size"), cov=("coverage", "first"))
+    eligible = size[(size.n >= MIN_CELLS) & (size["cov"] >= MIN_COVERAGE)].index
+    if not ev.get("district_id"):
+        win = win[win.district_id.isin(eligible)]
     if ev.get("district_id"):
         win = win[win.district_id == ev["district_id"]]
     best = win.loc[win.value.idxmax()]

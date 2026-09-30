@@ -1,4 +1,5 @@
 # Replay events (Phase 7). Focus day and district are chosen from the IMD observations inside the
+# search window among districts with >= 3 cells and >= 50 % of their area in the region;
 # search window (largest observed district value), so the choice is data-driven and reproducible.
 events:
   wayanad_2024:
@@ -9,7 +10,7 @@ events:
     search: ["2024-07-28", "2024-07-31"]
     window_days: 5
   vidarbha_heat_2024:
-    title: "2024 heatwave, Vidarbha"
+    title: "2024 heatwave, Vidarbha pilot region"
     region: heat_pilot
     variable: tmax
     district_id: null                  # the hottest district in the window
