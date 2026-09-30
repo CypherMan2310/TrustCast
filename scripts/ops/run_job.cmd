@@ -26,5 +26,10 @@ if "%1"=="truth" (
   %PY% scripts\build_truth.py --start 2026-01 --end 2026-12 --allow-test --refresh-current >> %LOG% 2>&1
 )
 if "%1"=="forecast" %PY% scripts\run_forecast.py >> %LOG% 2>&1
+if "%1"=="weekly" (
+  %PY% scripts\run_verification.py >> %LOG% 2>&1
+  %PY% scripts\run_experiments.py >> %LOG% 2>&1
+  %PY% scripts\build_replays.py >> %LOG% 2>&1
+)
 echo ==== %date% %time% end %1 (exit %errorlevel%) >> %LOG%
 endlocal
