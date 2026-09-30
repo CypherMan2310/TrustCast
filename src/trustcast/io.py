@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import uuid
@@ -42,3 +43,47 @@ def write_zarr_atomic(ds: xr.Dataset, dest: Path) -> None:
     tmp.parent.mkdir(parents=True, exist_ok=True)
     ds.to_zarr(tmp, mode="w", consolidated=False)
     replace_dir(tmp, dest)
+
+
+class AlreadyRunning(RuntimeError):
+    """Another process holds the named lock."""
+
+
+class single_instance:  # noqa: N801  (context manager used like a function)
+    """Exclusive OS-level file lock; released automatically when the process exits or dies.
+
+    Used so scheduled jobs (Task Scheduler / cron) never overlap with a run already in progress.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._fh = None
+
+    def __enter__(self) -> single_instance:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = open(self.path, "a+")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                self._fh.seek(0)
+                msvcrt.locking(self._fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as e:
+            self._fh.close()
+            raise AlreadyRunning(f"{self.path.name} is held by another process") from e
+        return self
+
+    def __exit__(self, *exc) -> None:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                self._fh.seek(0)
+                msvcrt.locking(self._fh.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+        self._fh.close()

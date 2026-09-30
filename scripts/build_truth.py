@@ -34,18 +34,27 @@ def main() -> int:
     ap.add_argument("--regions", nargs="+", default=None)
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--allow-test", action="store_true")
+    ap.add_argument(
+        "--refresh-current",
+        action="store_true",
+        help="rebuild the current and previous month (recent days fill in over time)",
+    )
     args = ap.parse_args()
     cfg = load_config()
     root = data_root()
     setup_logging(root / "logs" / "build_truth.jsonl")
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None).to_period("M")
     for month in pd.period_range(args.start, args.end, freq="M"):
+        if month > now:
+            break
         if month.start_time >= TEST_START and not args.allow_test:
             print(f"refusing {month}: frozen test period (use --allow-test only in Phase 8)")
             return 2
         days = pd.date_range(month.start_time, month.end_time.normalize(), freq="D")
         for rname in args.regions or list(cfg.regions):
             out = root / "processed" / "truth" / rname / f"{month.strftime('%Y%m')}.zarr"
-            if out.exists() and not args.overwrite:
+            recent = args.refresh_current and month >= now - 1
+            if out.exists() and not (args.overwrite or recent):
                 continue
             ds = build_truth(root, days, cfg.regions[rname])
             validate_truth(ds)

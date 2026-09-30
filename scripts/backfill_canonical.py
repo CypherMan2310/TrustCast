@@ -35,12 +35,13 @@ from trustcast.adapters.openmeteo_adapters import OpenMeteoPreviousRunsAdapter
 from trustcast.adapters.registry import build_adapters
 from trustcast.config import data_root, load_config
 from trustcast.grid.schema import validate_canonical
-from trustcast.io import write_zarr_atomic
+from trustcast.io import AlreadyRunning, single_instance, write_zarr_atomic
 from trustcast.log import event, setup_logging
 
 log = logging.getLogger("backfill")
 DEV_LAST_VALID_DAY = pd.Timestamp("2025-12-31")
 QUOTA_SLEEP_S = 1200
+EXIT_ON_DAILY_QUOTA = False
 DYN_WORKERS = 2  # measured: no speed-up beyond this (GEFS reads are bandwidth-bound)
 
 
@@ -94,6 +95,8 @@ def build_month(ad, inits, region) -> tuple[xr.Dataset | None, list[str]]:
             return xr.concat(parts, dim="init_time", combine_attrs="override"), missing
         except QuotaExhausted as e:
             sleep_s = QUOTA_SLEEP_S
+            if "Daily" in str(e) and EXIT_ON_DAILY_QUOTA:
+                raise
             if "Daily" in str(e):  # provider daily limit: resets at 00:00 UTC
                 now = dt.datetime.now(dt.UTC)
                 reset = (now + dt.timedelta(days=1)).replace(
@@ -134,7 +137,35 @@ def main() -> int:
         action="store_true",
         help="rebuild the store of the current (incomplete) month",
     )
+    ap.add_argument(
+        "--exit-on-daily-quota",
+        action="store_true",
+        help="stop (instead of sleeping until 00:10 UTC) when the daily provider quota is used up",
+    )
     args = ap.parse_args()
+    global EXIT_ON_DAILY_QUOTA
+    EXIT_ON_DAILY_QUOTA = args.exit_on_daily_quota
+    lock = (
+        data_root()
+        / "logs"
+        / (
+            f"backfill_{args.kind}"
+            + ("_" + "-".join(sorted(args.adapters)) if args.adapters else "")
+            + ".lock"
+        )
+    )
+    try:
+        with single_instance(lock):
+            return run(args)
+    except AlreadyRunning as e:
+        print(f"skipped: {e}", flush=True)
+        return 0
+    except QuotaExhausted as e:
+        print(f"stopped for today: {e}", flush=True)
+        return 0
+
+
+def run(args) -> int:
 
     cfg = load_config()
     root = data_root()

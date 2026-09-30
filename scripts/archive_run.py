@@ -22,6 +22,7 @@ from trustcast.adapters.ledger import QuotaLedger
 from trustcast.adapters.openmeteo import OpenMeteoSingleRuns
 from trustcast.archive.runner import archive_all
 from trustcast.config import data_root, load_config
+from trustcast.io import AlreadyRunning, single_instance
 from trustcast.log import event, setup_logging
 
 log = logging.getLogger("archive_run")
@@ -44,7 +45,12 @@ def main() -> int:
     om = cfg.openmeteo
     ledger = QuotaLedger(root / om.ledger, om.archiver_daily_cap, who="archiver")
     client = OpenMeteoSingleRuns(om, a.forecast_hours, a.hourly_variables, ledger=ledger)
-    results = archive_all(cfg, root, client, sources=args.sources, regions=args.regions)
+    try:
+        with single_instance(root / "logs" / "archiver.lock"):
+            results = archive_all(cfg, root, client, sources=args.sources, regions=args.regions)
+    except AlreadyRunning as e:
+        print(f"skipped: {e}")
+        return 0
 
     counts = collections.Counter(r.status for r in results)
     for r in results:
