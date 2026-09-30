@@ -301,3 +301,54 @@ Remaining:
 
 Background jobs (this session only): dynamical fast-source backfill, GEFS backfill, Previous Runs backfill
 (sleeping until 00:10 UTC for the Open-Meteo daily quota), archiver scheduler.
+
+---
+
+## 2026-09-30 (evening): scheduling, dashboard, live/replay/final-test scripts
+
+User: "do it" (approval for Windows Task Scheduler; continue).
+
+### Operations
+- `scripts/ops/run_job.cmd` + `register_tasks.ps1` register `\TRUSTCAST\` tasks (current user, run while logged
+  on, start-when-available, IgnoreNew): archive 03/09/15/21 IST; backfill_prev 05:45; backfill_dyn 06:00;
+  backfill_gefs 06:05; truth 12:00; forecast 14:30; weekly (Sun 02:00: verification, experiments, replays).
+  Session-bound background jobs stopped; backfills restarted under Task Scheduler.
+- `trustcast.io.single_instance` (OS file lock, auto-released on crash) on archiver, backfills and forecast;
+  verified: a second process is blocked while the lock is held, acquires after release.
+- Backfill: `--exit-on-daily-quota` (scheduled runs stop instead of sleeping), `--collect-test`,
+  `--refresh-current`. Truth: `--refresh-current` (current + previous month; IMERG-filled days change).
+- Truth for 2026 built (IMERG provisional; IMD 2026 still unavailable).
+
+### Dashboard (Next.js 16.3.7, React 19.2, MapLibre 6.11, Recharts 3.10)
+Pages: forecast map (layers, lead, run picker, alert list), district card (chart with 90 % band and
+P(>=64.5), weight breakdown, explanations, EN/HI bulletin with number check, CAP link, override form),
+who-to-trust (categorical skill map, leaderboard with CI), verification, sources, replay.
+`npm run build` OK; `tsc` OK; ESLint clean (fixed React 19 set-state-in-effect and ref-in-render errors).
+**Bug found in the dry run**: MapLibre v6 loads its worker as a separate ES module that Turbopack does not
+emit ("non-JavaScript MIME type"); fixed by copying worker + shared chunk to `public/maplibre/`
+(postinstall) and `setWorkerUrl`.
+
+### Demo dry-run 1 (functional, 2026-09-30 ~16:30 UTC)
+API + web via the browser pane (pane hidden, so no screenshots and the map cannot render: the page is
+`visibilityState=hidden`). Checked by page text/console: district card (Wayanad) complete, bulletin
+validated, replay page, sources page (GEM stale, NCUM not configured), skill map (AIFS lowest recent error
+in 70 % of rain-pilot cells for run 2025-02-28), verification page. Leaderboard shows its error state
+(no scoreboard yet). Products used were for the newest *development* init available (2025-02-28), not
+today: 2026 collection had not caught up. **Visual map check still to do with the pane visible.**
+
+### Replay (real data, partial sources)
+Wayanad 2024-07-30: IMD district mean 121.7 mm. Lead-1 forecasts: AIFS 79.0, IFS-ENS mean 38.2,
+equal mean 39.5, IFS control 24.0, GFS 16.9, **TRUSTCAST 33.5 mm**. The learned extreme layer starts at
+2024-10 so it was not active; the decayed-skill blend smoothed the extreme. IFS HRES, ICON, GEM, GEFS
+were not yet backfilled for July 2024. Reported as is.
+
+### Phase 8 runner
+`scripts/run_final_test.py`: refuses a second run (FINAL_LOCK.json with git commit, model_selection hash,
+coverage); requires model_selection.yaml, >= 80 % test-period coverage per source, and IMD 2026 or an
+explicit, recorded `--allow-provisional-truth`. Splits results at the ECMWF change: IFS Cy50r1 + AIFS v2
+operational from the 06 UTC run of 2026-05-12 (ECMWF news/forum), i.e. first 00Z init 2026-05-13.
+Dry run today: blocked (no 2026 forecasts collected yet, no model_selection.yaml, IMD 2026 0 %).
+
+### Packaging
+README (architecture diagram, commands, limitations, attribution), docs/DEMO.md, Dockerfile (API),
+web/Dockerfile, docker-compose.yml, web/.env.example.
