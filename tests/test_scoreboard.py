@@ -121,3 +121,19 @@ def test_skill_table_contract(setup, tmp_path):
     assert len(t) == 120 * 2 * 6
     heavy_obs = (t.observed >= 64.5).to_numpy()
     assert np.array_equal((t.event_hit_flags.to_numpy() >> 1) & 1, heavy_obs.astype(int))
+
+
+def test_regime_strata(setup):
+    obs, fcs = setup
+    labels = np.where(np.arange(120)[:, None] % 2 == 0, "monsoon_active", "monsoon_break")
+    regimes = xr.DataArray(
+        np.broadcast_to(labels, (120, 2)),
+        dims=("init_time", "lead_h"),
+        coords={"init_time": INITS, "lead_h": LEADS},
+    )
+    sb = scoreboard(fcs, obs, "precip", "test", reference="noisy", n_boot=50, regimes=regimes)
+    r = sb[(sb.forecast == "noisy") & (sb.lead_day == 1)].set_index(["season", "regime"]).n_cases
+    assert r[("all", "monsoon_active")] + r[("all", "monsoon_break")] == r[("all", "all")]
+    from trustcast.verify.scoreboard import overall
+
+    assert set(overall(sb).regime) == {"all"} and set(overall(sb).season) == {"all"}

@@ -62,6 +62,16 @@ class Cases:
         self.valid = np.isfinite(self.fc) & np.isfinite(self.obs) & np.isfinite(self.crps)
 
 
+def overall(sb: pd.DataFrame) -> pd.DataFrame:
+    """Rows of the unstratified result (season "all" and regime "all")."""
+    if sb.empty:
+        return sb
+    m = sb["season"] == "all"
+    if "regime" in sb:
+        m &= sb["regime"] == "all"
+    return sb[m]
+
+
 def make_cases(f: Forecast, obs: xr.DataArray, li: int, thresholds: tuple[float, ...]) -> Cases:
     """Per-case arrays of forecast ``f`` at lead index ``li``."""
     det = f.det.isel(lead_h=li).transpose("init_time", "lat", "lon").values.ravel()
@@ -150,8 +160,12 @@ def scoreboard(
     sample: str = "common",
     window: tuple[pd.Timestamp | None, pd.Timestamp | None] = (None, None),
     common: bool = True,
+    regimes: xr.DataArray | None = None,
 ) -> pd.DataFrame:
-    """One row per (forecast, lead, season): scores, 95 % CIs and paired diffs vs ``reference``.
+    """One row per (forecast, lead, stratum): scores, 95 % CIs and paired diffs vs ``reference``.
+
+    Strata: every season (regime "all") and, if ``regimes`` (init_time, lead_h labels) is given,
+    every regime (season "all").
 
     With ``common=True`` (default) every row of a lead is scored on the same cases: those where
     *all* forecasts in ``forecasts`` and the observation are valid, restricted to valid days in
@@ -178,10 +192,19 @@ def scoreboard(
         if window[1] is not None:
             in_window &= days <= window[1]
         shared = np.logical_and.reduce([c.valid for c in cases.values()]) if common else None
-        for season in SEASONS:
+        strata = [(s, "all") for s in SEASONS]
+        case_regime = None
+        if regimes is not None:
+            ncell = obs.sizes["lat"] * obs.sizes["lon"]
+            reg = regimes.reindex(init_time=obs.init_time).isel(lead_h=li).values.astype(str)
+            case_regime = np.repeat(reg, ncell)
+            strata += [("all", r) for r in sorted(set(reg)) if r not in ("nan", "unknown")]
+        for season, regime in strata:
             for f in forecasts:
                 c = cases[f.name]
                 smask = np.ones(c.valid.shape, bool) if season == "all" else (c.season == season)
+                if regime != "all":
+                    smask = smask & (case_regime == regime)
                 mask = (shared if common else c.valid) & smask & in_window
                 if mask.sum() == 0:
                     continue
@@ -197,6 +220,7 @@ def scoreboard(
                     "lead_day": li + 1,
                     "lead_h": int(lh),
                     "season": season,
+                    "regime": regime,
                     "forecast": f.name,
                     "kind": f.kind,
                     "ensemble": f.ens is not None,

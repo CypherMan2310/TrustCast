@@ -52,7 +52,7 @@ from trustcast.verify.compare import (
     verdict,
     window_mask,
 )
-from trustcast.verify.scoreboard import THRESHOLDS, Forecast, scoreboard
+from trustcast.verify.scoreboard import THRESHOLDS, Forecast, overall, scoreboard
 
 TUNE = ("2024-04-01", "2024-12-31")
 T_TUNE = ("2024-10-01", "2024-12-31")
@@ -75,7 +75,7 @@ def md_table(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
 DROPPED: dict[str, dict] = {}
 
 
-def holdout_board(fcs, b, ref, ref_prob, n_boot, sample):
+def holdout_board(fcs, b, ref, ref_prob, n_boot, sample, regimes=None):
     """Holdout scoreboard on a common sample; low-coverage forecasts are left out and recorded."""
     kept, dropped = pick_forecasts(fcs, b.obs, HOLDOUT[0], end=HOLDOUT[1], keep={ref, fcs[0].name})
     DROPPED[f"{sample}/{b.region}/{b.variable}"] = dropped
@@ -89,6 +89,7 @@ def holdout_board(fcs, b, ref, ref_prob, n_boot, sample):
         n_boot=n_boot,
         sample=sample,
         window=(pd.Timestamp(HOLDOUT[0]), pd.Timestamp(HOLDOUT[1])),
+        regimes=regimes,
     )
 
 
@@ -168,7 +169,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
         "phase3",
     )
     v_a = verdict(sb3, "blend_A", prev_name)
-    se_rows = sb3[(sb3.forecast == "superensemble") & (sb3.season == "all")]
+    se_rows = overall(sb3)[overall(sb3).forecast == "superensemble"]
     out["phase3"] = {"L1": v_l1, "A_params": best, "A_vs_prev": v_a}
     log(f"{region} {variable} A vs {prev_name}: {v_a}")
 
@@ -222,8 +223,9 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
         ref_prob,
         n_boot,
         "phase5",
+        regimes=full.regimes,
     )
-    ev_rows = sb5[sb5.season == "all"][
+    ev_rows = overall(sb5)[
         ["forecast", "lead_day", "n_cases", "rmse", "rmse_lo", "rmse_hi"]
         + [c for c in sb5.columns if c.startswith(("ets_", "pod_", "far_", "fbias_", "n_obs_ev_"))]
     ]
@@ -359,7 +361,7 @@ def write_reports(results):
         for name in ("sb5", "events", "brier", "reliability", "coverage", "ablations"):
             tb[name].to_csv(REPORTS / "phase5" / f"{name}_{tag}.csv", index=False)
         p3 = out["phase3"]
-        s3 = tb["sb3"][tb["sb3"].season == "all"]
+        s3 = overall(tb["sb3"])
         md3 += [
             f"## {region} · {var}",
             "",
@@ -393,7 +395,7 @@ def write_reports(results):
             "",
         ]
         p4 = out["phase4"]
-        s4 = tb["sb4"][tb["sb4"].season == "all"]
+        s4 = overall(tb["sb4"])
         md4 += [
             f"## {region} · {var}",
             "",

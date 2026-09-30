@@ -28,6 +28,7 @@ from trustcast.api import schemas as S
 from trustcast.blend.explain import SOURCE_LABELS
 from trustcast.config import REPO_ROOT, data_root, load_config
 from trustcast.skill.overrides import add_override, connect, load_overrides
+from trustcast.verify.scoreboard import overall
 
 app = FastAPI(
     title="TRUSTCAST API",
@@ -355,12 +356,7 @@ def leaderboard(region: str, variable: S.Variable = "precip", sample: str = "mai
     if not p.exists():
         raise HTTPException(503, "scoreboard not generated yet (scripts/run_verification.py)")
     sb = pd.read_csv(p)
-    sb = sb[
-        (sb.region == region)
-        & (sb.variable == variable)
-        & (sb["sample"] == sample)
-        & (sb.season == "all")
-    ]
+    sb = overall(sb[(sb.region == region) & (sb.variable == variable) & (sb["sample"] == sample)])
     if sb.empty:
         raise HTTPException(404, "no scoreboard rows for this selection")
     t = EVENT_T[variable]

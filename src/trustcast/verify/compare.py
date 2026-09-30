@@ -14,6 +14,7 @@ from trustcast.verify.bootstrap import (
     paired_block_bootstrap,
 )
 from trustcast.verify.metrics import reliability_table, scores_from_stats
+from trustcast.verify.scoreboard import overall
 
 # Gate rule, fixed before looking at results: the candidate ships if its RMSE is significantly lower
 # (95 % CI of the paired difference < 0) at >= MIN_BETTER_LEADS of the 5 lead days and significantly
@@ -85,7 +86,8 @@ def verdict(sb: pd.DataFrame, candidate: str, reference: str) -> dict:
             "passes": False,
             "note": "no common cases in the holdout window",
         }
-    rows = sb[(sb.forecast == candidate) & (sb.season == "all")].sort_values("lead_day")
+    ov = overall(sb)
+    rows = ov[ov.forecast == candidate].sort_values("lead_day")
     better = int((rows["d_rmse_hi"] < 0).sum())
     worse = int((rows["d_rmse_lo"] > 0).sum())
     return {

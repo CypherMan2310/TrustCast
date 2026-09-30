@@ -35,7 +35,7 @@ from trustcast.grid.static import static_features
 from trustcast.pipeline import config_from_selection, run_pipeline
 from trustcast.truth import imd
 from trustcast.verify.assemble import assemble, baselines, climatology
-from trustcast.verify.scoreboard import Forecast, scoreboard
+from trustcast.verify.scoreboard import Forecast, overall, scoreboard
 
 OUT = REPO / "reports" / "phase8"
 LOCK = OUT / "FINAL_LOCK.json"
@@ -166,12 +166,13 @@ def main() -> int:
                         sample=sample,
                         window=(w0, w1),
                         common=False,
+                        regimes=res.regimes,
                     )
                 )
             md.append(f"- {region} {var}: configuration {prov}")
     sb = pd.concat(boards, ignore_index=True)
     sb.to_csv(OUT / "scoreboard_test.csv", index=False, float_format="%.5g")
-    allr = sb[(sb["sample"] == "test") & (sb.season == "all")]
+    allr = overall(sb[sb["sample"] == "test"])
     cols = [
         "region",
         "variable",
