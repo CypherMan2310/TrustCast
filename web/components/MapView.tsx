@@ -23,6 +23,9 @@ interface Props {
 
 const H = 0.125;
 
+// MapLibre v6 loads its worker as a separate ES module; serve it from public/ (see scripts/copy-maplibre-worker.mjs)
+if (typeof window !== "undefined") maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
+
 function cellsToGeoJSON(cells: Cell[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -108,6 +111,7 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
     m.on("load", () => {
       loaded.current = true;
+      m.getContainer().dataset.loaded = "1"; // marker for automated checks
       draw();
     });
     m.on("mousemove", (e) => {

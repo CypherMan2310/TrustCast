@@ -174,3 +174,26 @@ ECMWF open data → 24 h rain r = 0.9989, mean |Δ| = 0.16 mm; Tmax mean Δ = �
 | Copernicus DEM, Natural Earth | Terrain / coast features | direct download | Phase 4 |
 | NDMA SACHET | CAP format reference | sachet.ndma.gov.in | Phase 7 |
 | BoM RMM index | Optional MJO regime | bom.gov.au | Phase 4, optional |
+
+---
+
+## Added 2026-09-30 (Phases 3-8)
+
+### geoBoundaries (district aggregation, alerts, CAP polygons)
+| Item | Value |
+|---|---|
+| ADM2 | gbOpen IND ADM2 (2021, 735 features), source Pathways Data Pvt. Ltd. / lgdirectory.gov.in, **ODbL 1.0** |
+| ADM1 | gbOpen IND ADM1 (36), DataMeet India / Election Commission of India, **CC BY 2.5 IN** |
+| Access | geoBoundaries API metadata, simplified GeoJSON from github.com/wmgeolab/geoBoundaries (commit 9469f09) |
+| Checked | 2026-09-30 |
+
+### Terrain
+Point elevations from the `elevation` field of our archived Open-Meteo responses (Open-Meteo documents
+Copernicus DEM GLO-90); slope and distance to coast derived on the 0.25° grid. No extra download.
+
+### ECMWF model change inside the test period
+IFS Cycle 50r1 and AIFS Single/ENS v2 went operational with the 06 UTC run of 12 May 2026 (ECMWF news
+item 2026-05-12; ECMWF forum confirmation 2026-05-06). Phase 8 reports before/after 2026-05-13 00Z.
+
+### Basemap (dashboard only)
+CARTO raster basemaps (light_all / dark_all), attribution "© OpenStreetMap contributors © CARTO".

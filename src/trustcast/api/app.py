@@ -335,20 +335,15 @@ def skill_map(
                     dmse={str(s): _f(x) for s, x in zip(ds.source.values, v, strict=True)},
                 )
             )
-    sel = (
-        yaml.safe_load((REPO_ROOT / "config" / "model_selection.yaml").read_text())
-        if (REPO_ROOT / "config" / "model_selection.yaml").exists()
-        else {}
-    )
-    hl = (sel.get("models", {}).get(f"{region}_{variable}", {}) or {}).get(
-        "half_life", float("nan")
-    )
+    from trustcast.pipeline import config_from_selection
+
+    hl = config_from_selection(region, variable)[0].half_life  # tuned value, else the default in use
     return S.SkillMap(
         region=region,
         variable=variable,
         lead_day=lead_day,
         init_time=pd.Timestamp(ds.attrs["init_time"]).to_pydatetime(),
-        half_life_days=hl if hl == hl else 0.0,
+        half_life_days=hl,
         cells=cells,
     )
 

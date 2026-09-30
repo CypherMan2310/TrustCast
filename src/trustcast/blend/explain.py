@@ -114,7 +114,7 @@ def explanation_sentence(
     ]
     if top:
         parts.append("Main reasons: " + ", ".join(name for name, _ in top) + ".")
-    parts.append(f"Regime: {regime.replace('_', ' ')}.")
+    parts.append(f"Regional regime: {regime.replace('_', ' ')}.")
     if p_heavy is not None and np.isfinite(p_heavy):
         parts.append(f"Chance of heavy rain (>= 64.5 mm): {p_heavy * 100:.0f} %.")
     if defer:

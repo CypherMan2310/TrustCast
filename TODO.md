@@ -42,18 +42,29 @@ Work items per module, each with an acceptance check. Tick only when the check h
       documented (WORK.md). Check: `scripts/build_canonical.py` reports for rain_pilot and heat_pilot.
 - [ ] **Open:** IMD 2026 rain/Tmax files (needed before Phase 8). Check: `data/truth/{rain,tmax}/2026.*` non-empty.
 
-## Phase 2: Baselines and verification harness (STOP gate), in progress
-- [x] Quota-safe bulk backfill (`scripts/backfill_canonical.py`, resumable, cross-process ledger, land cells only).
-      Check: real month built (icon_prev heat_pilot 2025-10, 31 inits, 0 missing).
-- [ ] **Backfill complete** for 2024-01..2025-12 (both regions): dynamical.org (~hours) and Previous Runs
-      (~10–12 days at the free quota). Check: `reports/phase2/coverage.csv`.
-- [x] Dev truth, monthly, both regions (`scripts/build_truth.py`). Check: 24 months x 2 regions, 0 provisional.
-- [ ] IMD 1991–2020 normal on disk (climatology baseline + BSS reference). Check: `download_imd_history.py` reports no failures.
-- [x] Baselines: equal mean, rolling-origin superensemble, persistence, climatology (code). Check: `tests/test_baselines.py`
-      incl. superensemble leakage test.
-- [x] Metrics (RMSE, MAE, bias, fair CRPS, Brier/BSS, reliability, ETS/CSI/POD/FAR/fbias). Check: `tests/test_verify.py`.
-- [x] Paired block bootstrap (5-day blocks), unit-tested on synthetic fixtures incl. a null-rate check.
-- [x] Stratification region x lead x season; common-sample scoring; skill table Parquet. Check: `tests/test_scoreboard.py`.
-- [ ] Regime stratum (needs Phase 4 regime labels; `regime = "all"` until then).
-- [x] One command: `python scripts/run_verification.py` regenerates all tables/figures in `reports/phase2/`.
-- [ ] Report the baseline scoreboard to the user, then STOP.
+## Phase 2: Baselines and verification harness
+- [x] Harness, baselines, bootstrap, common-sample scoreboard, skill table, one command (tests green).
+- [x] IMD 1991-2023 history on disk (climatology baseline + BSS reference).
+- [ ] Dev backfill complete (dyn fast sources ~hours; GEFS ~1-2 days; Previous Runs ~10-12 days of quota).
+- [ ] Scoreboard on complete dev data (weekly job re-runs it automatically).
+
+## Phase 3-5
+- [x] QM, leak-free tracker (leakage test), blender A, gate B, regimes, tail map, calibrated classifiers,
+      CQR, defer flag, SHAP explanations, pipeline + ablations, experiment driver (tests green).
+- [ ] `run_experiments.py` on complete dev data -> reports/phase3-5, config/model_selection.yaml.
+
+## Phase 6
+- [x] API contract + implementation (6 contract tests), products writer, districts.
+- [x] Dashboard: map, district card, skill, verification, sources, replay; build + ESLint clean.
+- [ ] Live products for today's runs (needs 2026 collection; daily `forecast` task).
+
+## Phase 7
+- [x] Replays (Wayanad 2024 built on partial data), EN/HI bulletins with number validation, overrides
+      feeding skill state, CAP 1.2 Draft export.
+- [ ] Replays rebuilt on complete data (weekly task).
+
+## Phase 8
+- [x] Frozen-test runner with run-once lock and ECMWF-change split; README; Docker; demo script.
+- [ ] Preconditions: 2026 data collected, model_selection.yaml from dev, IMD 2026 (or recorded provisional).
+- [ ] Run the frozen test once; lock numbers in WORK.md.
+- [ ] Two demo dry-runs logged.
