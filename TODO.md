@@ -27,13 +27,24 @@ Work items per module, each with an acceptance check. Tick only when the check h
 - [x] **One real run** written to `data/raw/` and `data/processed/`, manifests verified.
       Check: `scripts/archive_run.py` exit 0, `scripts/verify_archive.py` all OK. (16/16 verified, 2026-09-30)
 - [x] Scheduling: `scripts/scheduler.py` (APScheduler) + `.github/workflows/archive.yml`.
-- [ ] Scheduler actually running (local task or GitHub remote). **Needs user decision** (see WORK.md open questions).
+- [x] Scheduler running: `scripts/scheduler.py` background process (non-persistent; revisit Task Scheduler / GitHub Actions).
 
-## Phase 1: Adapters and truth (not started)
-- [ ] `SourceAdapter.fetch(init_time, bbox) -> canonical_v1` for Open-Meteo (live, Previous Runs, Single Runs).
-- [ ] dynamical.org adapters: AIFS Single, GEFS, IFS-ENS, AIFS-ENS.
-- [ ] ECMWF/NOAA bucket fallback adapter.
-- [ ] `NcumAdapter` stub raising `NotConfigured`.
-- [ ] IMD truth loader (rain 0.25°, Tmax 1.0°) via imdlib; IMERG (dynamical.org) for recent days, `provisional`.
-- [ ] Regridding + 08:30 IST window alignment with hand-checked unit tests (incl. AIFS 6 h steps).
-- [ ] Check: one real week, pilot region, all sources aligned on the IMD grid; missing-value handling documented.
+## Phase 1: Adapters and truth (done 2026-09-30)
+- [x] `SourceAdapter.fetch(init_time, bbox) -> canonical_v1` for Open-Meteo Previous Runs, Single Runs, Live.
+      Check: `tests/test_adapters.py`, `tests/test_canonical.py`; real week built.
+- [x] dynamical.org adapters: AIFS Single, GFS, GEFS, IFS-ENS, AIFS-ENS, IFS control (member 0). Check: real week.
+- [x] ECMWF open-data fallback adapter. Check: real 2026-09-30 00Z run, r = 0.9989 vs Single Runs path.
+- [x] `NcumAdapter` stub raising `NotConfigured`. Check: `test_ncum_stub_raises_not_configured`.
+- [x] IMD truth loader (rain 0.25°, Tmax 1.0°), raw reader equals imdlib; IMERG provisional fill. Check: `tests/test_truth.py`.
+- [x] Regridding + 08:30 IST window alignment with hand-checked tests (incl. 6 h straddling steps).
+      Check: `tests/test_align.py`, `tests/test_regrid.py`.
+- [x] One real week, both pilot regions, all eval sources aligned on the IMD grid; missing-value handling
+      documented (WORK.md). Check: `scripts/build_canonical.py` reports for rain_pilot and heat_pilot.
+- [ ] **Open:** IMD 2026 rain/Tmax files (needed before Phase 8). Check: `data/truth/{rain,tmax}/2026.*` non-empty.
+
+## Phase 2: Baselines and verification harness (STOP gate), next
+- [ ] Bulk backfill of canonical data for the dev period (2024-01..2025-12; AIFS-ENS from 2025-07) with quota-aware resume.
+- [ ] Baselines: each source, equal-weight mean, static regression-weighted superensemble, climatology, persistence.
+- [ ] Metrics: RMSE, MAE, bias, CRPS, Brier skill, reliability, ETS/CSI/POD/FAR/frequency bias at 64.5 / 115.6 mm.
+- [ ] Stratification: region × lead × season × regime; paired block bootstrap (5-day blocks) with unit tests.
+- [ ] One command regenerates every table/figure. Report the baseline scoreboard, then STOP.

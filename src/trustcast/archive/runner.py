@@ -28,6 +28,7 @@ from trustcast.archive.cycles import candidate_cycles
 from trustcast.archive.manifest import build_manifest, verify_manifest, write_raw
 from trustcast.config import Config
 from trustcast.grid.imd_grid import RegularGrid
+from trustcast.io import write_zarr_atomic
 from trustcast.log import event
 
 log = logging.getLogger(__name__)
@@ -115,11 +116,7 @@ def archive_one(
         return RunResult(src.source, region, init.isoformat(), "failed", str(e))
 
     write_raw(raw, raw_p)
-    tmp = zarr_p.with_name(zarr_p.name + ".tmp")
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    ds.to_zarr(tmp, mode="w", consolidated=False)
-    tmp.rename(zarr_p)
+    write_zarr_atomic(ds, zarr_p)
 
     request = {
         "url": raw["url"],

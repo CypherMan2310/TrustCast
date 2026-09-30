@@ -5,7 +5,26 @@ behaviour that differs from `SIH26081_BUILD_PLAN.md`. Update on every new source
 
 Attribution line for UI, bulletins and reports:
 > Forecast data: Open-Meteo.com (CC BY 4.0), with model data from ECMWF, NOAA/NCEP, DWD and ECCC;
-> dynamical.org (CC BY 4.0). Observations: India Meteorological Department; NASA GPM IMERG.
+> dynamical.org (CC BY 4.0); ECMWF open data (CC BY 4.0). Observations: India Meteorological
+> Department; NASA GPM IMERG V07 via dynamical.org (CC BY 4.0).
+
+## Source matrix (Phase 1, 2026-09-30)
+
+| Logical source | Evaluation history (dev 2024–25, test 2026) | Live | Init semantics in eval |
+|---|---|---|---|
+| `ecmwf_ifs_ctrl` | dynamical IFS-ENS member 0 (control), 00Z, from 2024-04-01 | same | true init |
+| `ecmwf_ifs` (HRES) | Open-Meteo Previous Runs `ecmwf_ifs025` | Single Runs / own archive; ECMWF open data fallback | nominal init, **~11.5 h staler** |
+| `ecmwf_aifs` | dynamical AIFS Single, from 2024-04-01 | Single Runs / archive | true init |
+| `ncep_gfs` | dynamical GFS, from 2021-05 | Single Runs / archive | true init |
+| `dwd_icon` | Open-Meteo Previous Runs `icon_global` | Single Runs / archive | nominal init, ~11.5 h staler |
+| `cmc_gem` | Open-Meteo Previous Runs `gem_global` (until provider stopped, 2026-05-26) | none (stale) | nominal init, ~11.5 h staler |
+| `ncep_gefs` (31 members) | dynamical GEFS 35-day, 00Z | same | true init |
+| `ecmwf_ifs_ens` (51) | dynamical IFS-ENS 0.25°, 00Z | same | true init |
+| `ecmwf_aifs_ens` (51) | dynamical AIFS-ENS, **from 2025-07-02 only** | same | true init |
+| `ncmrwf_ncum` | not public | not public | `NotConfigured` stub |
+
+Truth: IMD gridded rain 0.25° + Tmax 1.0° (gauge, final); IMERG V07 Late (provisional) where IMD is
+not available.
 
 ---
 
@@ -30,6 +49,11 @@ Observed behaviour (2026-09-30):
   body for 2026-09-29 12Z. Metadata shows the last GEM init as 2026-05-26 00Z. GEM is kept in the config so
   the archiver records it as STALE on every run. It is not used as a source until it resumes.
 - An empty 200 body means "run not available"; the client treats it as a failure.
+- **Retention is a rolling ~180 days (checked 2026-09-30):** binary search over 00Z runs gives the
+  earliest available run = **2026-04-02 for all four models** (ecmwf_ifs025, ecmwf_aifs025_single,
+  gfs_global, icon_global). A 2025-10-20 request returns HTTP 400 "requested model run is not
+  available". **Deviation from the plan** (which says IFS from Mar 2024, others from Sep 2025): Single
+  Runs gives no development-period data. Our own archiver is the only way to keep these runs.
 - Quota: each **location** counts as one call. Four 273-point requests inside one minute returned HTTP 429
   "Minutely API request limit exceeded". Documented free limits: 600/min, 5000/h, 10000/day.
   TRUSTCAST throttles to 400 locations/min (blocking) and 4000/h (fail, resume next run).
@@ -50,7 +74,26 @@ Latest inits seen 2026-09-30 ~11:50 UTC: ecmwf_ifs025 2026-09-30 00Z, ncep_gfs02
 ecmwf_aifs025_single 00Z, **cmc_gem_gdps 2026-05-26 00Z**. `gem_global`/`gem_seamless` have no
 `last_run_initialisation_time`.
 
-### Open-Meteo Previous Runs API (prototype backfill, `prototype/backfill_previous_runs.py`)
+### Open-Meteo Previous Runs API (evaluation history for IFS HRES, ICON, GEM)
+
+**Semantics, verified 2026-09-30.** `<var>_previous_day{k}` at valid hour t is the value from the run
+initialised at **floor_6h(t) − k days**. Evidence: for 2026-09-20, 20 locations, the full 20-location
+vector matched a Single Runs run exactly (|Δ| ≤ 0.05 °C) at the model's native 3-hourly steps:
+hours 00/03 → run 09-19 00Z, 06/09 → 06Z, 12/15 → 12Z, 18/21 → 18Z (day1), and the same pattern a day
+earlier for day2. Intermediate hours differ slightly (the two APIs interpolate 3 h → 1 h differently).
+Consequences:
+- A Previous Runs "lead day" mixes four runs (00/06/12/18Z). For a nominal 00Z init I, lead day k uses
+  `previous_day{k}` and every run used is initialised in [I − 1 day, I], so nothing after I (leak-free;
+  unit-tested in `tests/test_canonical.py`).
+- Effective lead is 24k … 24k+5 h (mean ≈ 24k+2.5 h), versus 24k−21 … 24k+3 h (mean ≈ 24k−9 h) for a
+  true 00Z run: **Previous Runs sources are ~11.5 h staler** at the same nominal lead. Skill comparisons
+  must keep this in mind; `ecmwf_ifs_ctrl` (true init) was added for a fair IFS.
+- Model ids that work for 2025-10: `ecmwf_ifs025`, `icon_global`, `icon_seamless`, `gem_global`,
+  `gem_seamless`, `ecmwf_aifs025_single`. GEM cells sit ~0.05° off the IMD points (nearest cell).
+- Quota weight ≈ locations × max(1, n_vars/10) × max(1, n_days/14); blocks are half-months (1–14,
+  15–end), cached as raw gzip under `data/raw/openmeteo_prev/<model>/<region>/` once complete.
+
+Prototype data (collected before Phase 0, `prototype/backfill_previous_runs.py`):
 | Item | Value |
 |---|---|
 | Endpoint | `https://previous-runs-api.open-meteo.com/v1/forecast` |
@@ -78,6 +121,32 @@ ecmwf_aifs025_single 00Z, **cmc_gem_gdps 2026-05-26 00Z**. `gem_global`/`gem_sea
 
 dynamical.org keeps its own history, so the archiver does not snapshot these sources.
 
+Conventions (dataset attributes and catalogue pages, 2026-09-30):
+- `precipitation_surface`: **average rate (kg m⁻² s⁻¹ = mm/s) since the previous forecast step**
+  (`step_type: avg`); step amount = rate × step length. IMERG: mean rate over the half hour
+  **starting** at the time label (catalogue page), gauge-adjusted where available (Late run, ~14 h latency).
+- `temperature_2m` instantaneous; `maximum_temperature_2m` (GFS, GEFS) = max since the previous step.
+- Native lead steps: AIFS/AIFS-ENS 6 h; IFS-ENS 3 h; GEFS 3 h; GFS 1 h (then 3 h).
+- IFS-ENS: 51 members, **member 0 = control** ("produced with the best available data and unperturbed
+  models"); **00Z inits only**. GEFS 35-day: 00Z only.
+- `ingested_forecast_length` is often NaT even when data is present; treated as "not recorded".
+- Grids are 0.25° global, latitude descending; IMD 0.25° points coincide exactly (identity selection).
+- Read time for one init, rain pilot: AIFS ~13–18 s, GFS ~20 s, IFS-ENS ~5 s, AIFS-ENS ~6 s, GEFS ~38 s.
+
+### ECMWF open data (IFS HRES fallback, `ecmwf-opendata` 0.3.34 + cfgrib/eccodes 2.48)
+| Item | Value |
+|---|---|
+| Access | `Client(source="ecmwf", model="ifs", resol="0p25").retrieve(...)`, anonymous |
+| Licence | CC BY 4.0, attribute ECMWF (shown by the client on download) |
+| Checked | 2026-09-30: latest 00Z = 2026-09-30 00Z |
+| Params | `tp` accumulated from init (m); `mx2t3` = max 2 m T over previous 3 h (K); `mx2t6` not found at step 6; `2t` |
+| Size | ~0.6–0.8 MB per global field; ~30 MB per run for our windows |
+| Notes | Recent runs only (days). Portal limited to 500 simultaneous connections; mirrors on AWS/Azure/GCP |
+
+Cross-check 2026-09-30 00Z IFS, rain pilot, 5 IMD days: Open-Meteo Single Runs (via our archive) vs
+ECMWF open data → 24 h rain r = 0.9989, mean |Δ| = 0.16 mm; Tmax mean Δ = −0.12 °C (hourly-sampled
+2 m T vs true 3-hourly maxima).
+
 ### IMD gridded rainfall and Tmax (prototype truth, `prototype/download_imd_truth.py`)
 | Item | Value |
 |---|---|
@@ -86,6 +155,10 @@ dynamical.org keeps its own history, so the archiver does not snapshot these sou
 | Missing codes | rain `-999` (mask `< -100`), Tmax `99.9` (mask `>= 60`) |
 | Data on disk | `data/truth/` (52 MB): yearly `.grd` files + `imd_points.parquet` at the prototype points |
 | Licence | IMD data, free for research use; attribute India Meteorological Department. Exact terms still **to confirm** on imdpune.gov.in |
+| Files present (2026-09-30) | rain 2024, 2025 (complete); Tmax 2024, 2025 (complete, files named `YYYY.GRD`) |
+| **2026 missing** | `imdlib.get_data` for 2026 (rain and Tmax) reports success but leaves an empty file (3 attempts each). The real-time endpoint `cmpg/Realtimedata/Rainfall/rain.php` timed out. Needed before the Phase 8 frozen test; until then 2026 days use IMERG, flagged `provisional`. |
+| Day label | IMD day D = 24 h ending 08:30 IST (03 UTC) on D. Checked on 1,342 day–point pairs (4 models, lead 1): correlation vs window offset peaks at windows ending 03 UTC on D (r ≈ 0.70); UTC calendar day r ≈ 0.61 |
+| Reader | Own raw reader (`truth/imd.py`), identical to `imdlib.open_data` on the full 2024 rain and Tmax files |
 
 ---
 

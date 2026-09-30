@@ -33,6 +33,7 @@ class RegionConfig(BaseModel):
     label: str
     lat: tuple[float, float]
     lon: tuple[float, float]
+    name: str = ""  # filled from the YAML key by load_config()
 
     @model_validator(mode="after")
     def _ordered(self) -> RegionConfig:
@@ -74,6 +75,41 @@ class OpenMeteoConfig(BaseModel):
     sources: list[OpenMeteoSource]
 
 
+class CanonicalConfig(BaseModel):
+    """Canonical (IMD-day) product settings."""
+
+    lead_days: int = 5
+    eval_init_hours: list[int] = Field(default_factory=lambda: [0])
+
+
+class AdapterConfig(BaseModel):
+    """One source adapter (see ``adapters:`` in the YAML)."""
+
+    source: str
+    kind: Literal["nwp", "ai", "ens"]
+    type: Literal[
+        "openmeteo_previous_runs",
+        "openmeteo_single_runs",
+        "openmeteo_live",
+        "dynamical",
+        "ecmwf_opendata",
+        "ncum",
+    ]
+    use: Literal["eval", "live", "fallback"]
+    model: str | None = None
+    dataset: str | None = None
+    tmax_var: str | None = None
+    archive_source: str | None = None
+    member: int | None = None  # dynamical: select one ensemble member (e.g. 0 = control)
+    enabled: bool = True
+
+
+class PreviousRunsConfig(BaseModel):
+    """Open-Meteo Previous Runs endpoint."""
+
+    url: str
+
+
 class Config(BaseModel):
     """Root configuration object."""
 
@@ -81,6 +117,15 @@ class Config(BaseModel):
     regions: dict[str, RegionConfig]
     archiver: ArchiverConfig
     openmeteo: OpenMeteoConfig
+    canonical: CanonicalConfig = Field(default_factory=CanonicalConfig)
+    adapters: dict[str, AdapterConfig] = Field(default_factory=dict)
+    previous_runs: PreviousRunsConfig | None = None
+
+    @model_validator(mode="after")
+    def _name_regions(self) -> Config:
+        for key, region in self.regions.items():
+            region.name = key
+        return self
 
 
 def load_config(path: Path | str | None = None) -> Config:

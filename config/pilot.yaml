@@ -59,3 +59,34 @@ openmeteo:
       model: gem_global
       meta_id: cmc_gem_gdps        # last init 2026-05-26 at check time: expect STALE
       kind: nwp
+
+# ---------------------------------------------------------------------------------------------
+# Phase 1: canonical products and source adapters (verified live 2026-09-30, see DATA_SOURCES.md)
+canonical:
+  lead_days: 5                 # IMD-day windows per init (00Z init -> lead_h 27, 51, 75, 99, 123)
+  eval_init_hours: [0]         # dev/test evaluation uses 00Z inits (IFS-ENS and GEFS are 00Z-only)
+
+# One entry per adapter. `source` is the logical forecast source used by blending and verification.
+# `use`: eval = dev/test history, live = operational runs, fallback = used when the primary fails.
+adapters:
+  # IFS HRES via Previous Runs is ~11.5 h staler than a true 00Z run at the same lead (WORK.md);
+  # the IFS-ENS control (same 9 km resolution since Cy48r1) gives a true-init IFS for evaluation.
+  ifs_prev:      {source: ecmwf_ifs,  kind: nwp, type: openmeteo_previous_runs, model: ecmwf_ifs025, use: eval}
+  ifsctrl_dyn:   {source: ecmwf_ifs_ctrl, kind: nwp, type: dynamical, dataset: ecmwf-ifs-ens-forecast-15-day-0-25-degree, member: 0, use: eval}
+  icon_prev:     {source: dwd_icon,   kind: nwp, type: openmeteo_previous_runs, model: icon_global,  use: eval}
+  gem_prev:      {source: cmc_gem,    kind: nwp, type: openmeteo_previous_runs, model: gem_global,   use: eval}
+  aifs_dyn:      {source: ecmwf_aifs, kind: ai,  type: dynamical, dataset: ecmwf-aifs-single-forecast, use: eval}
+  gfs_dyn:       {source: ncep_gfs,   kind: nwp, type: dynamical, dataset: noaa-gfs-forecast, tmax_var: maximum_temperature_2m, use: eval}
+  gefs_dyn:      {source: ncep_gefs,  kind: ens, type: dynamical, dataset: noaa-gefs-forecast-35-day, tmax_var: maximum_temperature_2m, use: eval}
+  ifsens_dyn:    {source: ecmwf_ifs_ens,  kind: ens, type: dynamical, dataset: ecmwf-ifs-ens-forecast-15-day-0-25-degree, use: eval}
+  aifsens_dyn:   {source: ecmwf_aifs_ens, kind: ens, type: dynamical, dataset: ecmwf-aifs-ens-forecast, use: eval}
+  ifs_single:    {source: ecmwf_ifs,  kind: nwp, type: openmeteo_single_runs, archive_source: ecmwf_ifs,  use: live}
+  aifs_single:   {source: ecmwf_aifs, kind: ai,  type: openmeteo_single_runs, archive_source: ecmwf_aifs, use: live}
+  gfs_single:    {source: ncep_gfs,   kind: nwp, type: openmeteo_single_runs, archive_source: ncep_gfs,   use: live}
+  icon_single:   {source: dwd_icon,   kind: nwp, type: openmeteo_single_runs, archive_source: dwd_icon,   use: live}
+  ifs_live:      {source: ecmwf_ifs,  kind: nwp, type: openmeteo_live, archive_source: ecmwf_ifs, use: live}
+  ifs_opendata:  {source: ecmwf_ifs,  kind: nwp, type: ecmwf_opendata, use: fallback}
+  ncum:          {source: ncmrwf_ncum, kind: nwp, type: ncum, use: eval}
+
+previous_runs:
+  url: "https://previous-runs-api.open-meteo.com/v1/forecast"

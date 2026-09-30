@@ -149,7 +149,10 @@ class OpenMeteoSingleRuns:
             raise SourceUnavailable(f"{src.source}: metadata unavailable ({e})") from e
         return dt.datetime.fromtimestamp(ts, dt.UTC).replace(tzinfo=None)
 
-    def _get(self, params: dict[str, Any], units: int) -> list[dict[str, Any]]:
+    def _get(
+        self, params: dict[str, Any], units: int, url: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Throttled GET with retries; ``units`` = weighted location count."""
         last_err = "unknown"
         for attempt in range(self.cfg.retries + 1):
             try:
@@ -160,7 +163,7 @@ class OpenMeteoSingleRuns:
                 ) from e
             self.limiter.acquire(units)
             try:
-                r = self.client.get(self.cfg.single_runs_url, params=params)
+                r = self.client.get(url or self.cfg.single_runs_url, params=params)
             except httpx.HTTPError as e:
                 last_err = f"{type(e).__name__}: {e}"
                 self.sleep(10 * (attempt + 1))

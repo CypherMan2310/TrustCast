@@ -55,8 +55,10 @@ L3B gated blender → L4 regimes → L5 extremes → L6 uncertainty → L7 defer
 ### Phase status
 | Phase | Status |
 |---|---|
-| 0 Foundations (repo, convention files, archiver) | done except live scheduling (awaiting user choice) |
-| 1–8 | not started |
+| 0 Foundations (repo, convention files, archiver) | done; scheduler = `scripts/scheduler.py` in a background process (not persistent across reboots) |
+| 1 Adapters, truth, alignment | done (see WORK.md 2026-09-30); open: IMD 2026 files |
+| 2 Baselines + verification harness (STOP gate) | next |
+| 3–8 | not started |
 
 ---
 
@@ -64,8 +66,10 @@ L3B gated blender → L4 regimes → L5 extremes → L6 uncertainty → L7 defer
 
 - **Python 3.12** in `.venv` (created with `py -3.12 -m venv .venv`; the machine default is 3.14; do not use it).
 - xarray, zarr (v3 format, unconsolidated stores), dask, numpy, pandas, scipy, pyarrow, duckdb, pydantic,
-  httpx, PyYAML, APScheduler, dynamical-catalog, pytest, ruff. Later: scikit-learn, lightgbm, shap,
-  fastapi, uvicorn, imdlib, xesmf or xarray-regrid, cdsapi/earthaccess (optional).
+  httpx, PyYAML, APScheduler, dynamical-catalog, imdlib, ecmwf-opendata + cfgrib + eccodes, tabulate,
+  pytest, ruff. Later: scikit-learn, lightgbm, shap, fastapi, uvicorn, cdsapi/earthaccess (optional).
+- **No xesmf** (ESMF is conda-only on Windows): own separable conservative/bilinear/identity regridder
+  in `grid/regrid.py`, unit-tested against hand-computed cases.
 - Frontend (Phase 6): Next.js (TypeScript), MapLibre GL, ECharts or Recharts, Tailwind.
 - Storage: raw files → Zarr → Parquet (DuckDB); SQLite for app state.
 - Scheduling: `scripts/scheduler.py` (APScheduler) locally + `.github/workflows/archive.yml`.
@@ -82,11 +86,15 @@ TrustCast/
   config/pilot.yaml              grid, regions, archiver, source list (single config source)
   src/trustcast/
     config.py log.py
-    adapters/  base.py (SourceAdapter, errors) ratelimit.py openmeteo.py
-    grid/      imd_grid.py (IMD grids, bbox) schema.py (xarray contracts)
+    config.py log.py io.py (Windows-safe atomic Zarr writes)
+    adapters/  base.py (SourceAdapter, errors) ratelimit.py openmeteo.py (Single Runs client)
+               openmeteo_adapters.py (PreviousRuns / SingleRuns / Live -> canonical)
+               dynamical.py  ecmwf_opendata.py  ncum.py (stub)  registry.py (build_adapters)
+    grid/      imd_grid.py schema.py align.py (IMD-day windows) regrid.py canonical.py diagnostics.py
+    truth/     imd.py (IMD .grd reader/download) imerg.py (dynamical IMERG) build.py (truth_v1)
     archive/   cycles.py manifest.py runner.py
     bias/ skill/ blend/ extremes/ uncertainty/ verify/ api/ alerts/   (later phases)
-  scripts/   archive_run.py verify_archive.py scheduler.py
+  scripts/   archive_run.py verify_archive.py scheduler.py build_canonical.py
   tests/     unit tests; tests/fixtures/ = SYNTHETIC fixtures only
   prototype/ pre-Phase-0 point scripts (Previous Runs backfill, IMD truth) kept for reference
   web/ notebooks/ .github/workflows/
@@ -95,8 +103,14 @@ TrustCast/
     processed/archive/<source>/<region>/<YYYYmmddTHH>.zarr        archive_hourly_v1
     processed/archive/manifests/<source>__<region>__<stamp>.json manifest per run
     processed/archive/runs.jsonl                                  one line per attempt
-    logs/archiver.jsonl                                           structured logs
-    cache/ processed/prev_runs/ truth/                            prototype outputs (real data)
+    raw/openmeteo_prev/<model>/<region>/<YYYYMM>{a|b}_L5.json.gz  Previous Runs half-month blocks
+    raw/ecmwf_opendata/<init>/{tp,mx2t3}.grib2                    open-data fallback GRIB
+    processed/canonical/<adapter>/<region>/<first>_<last>.zarr    canonical_v1
+    processed/truth/<region>/<first>_<last>.zarr                  truth_v1
+    processed/reports/alignment_<region>_<tag>.md                 alignment sanity reports
+    truth/{rain,tmax}/<year>.grd|GRD                              IMD yearly files
+    logs/*.jsonl                                                  structured logs
+    cache/ processed/prev_runs/                                   prototype outputs (real data)
 ```
 
 Package imports: scripts and tests put `src/` on `sys.path`; run everything with `.venv/Scripts/python`.
@@ -120,15 +134,31 @@ IMD 0.25° rain grid: lat 6.5–38.5 N, lon 66.5–100.0 E, 129 × 135 (`IMD_RAI
 - attrs `schema, source, provider, model_id, model_version, licence, fetched_at, regrid_method, region, init_time`.
 - Values exactly as delivered: provider nulls → NaN, never 0. No accumulation, no interpolation.
 
-### `canonical_v1` (Phase 1 target; `grid/schema.py::validate_canonical`)
-- dims `(init_time, lead_h, lat, lon)` on the IMD 0.25° grid.
-- vars `precip_24h_mm` (accumulated over the IMD day 03:00→03:00 UTC = 08:30→08:30 IST), `tmax_c`.
-  Extend later: `wind_gust_ms`, `mslp_hpa`.
-- `lead_h` = hours from init to the END of the 24 h window.
-- attrs `schema, source, model_version, licence, fetched_at, regrid_method`.
+### `canonical_v1` (`grid/schema.py::validate_canonical`, built by `grid/canonical.py`)
+- dims `(init_time, lead_h, lat, lon)`; ensembles `(init_time, member, lead_h, lat, lon)`; IMD 0.25° grid.
+- vars `precip_24h_mm` (accumulated over the IMD day 03:00→03:00 UTC = 08:30→08:30 IST), `tmax_c`
+  (max over the same window). Extend later: `wind_gust_ms`, `mslp_hpa`.
+- `lead_h` = hours from init to the END of the window: 00Z → 27, 51, 75, 99, 123 (5 lead days);
+  12Z → 39, 63, ... (first complete window starting at/after init).
+- coord `valid_day(init_time, lead_h)` = IMD day label = window end date.
+- attrs `schema, source, model_version, licence, fetched_at, regrid_method, init_semantics` (+ adapter,
+  provider, tmax_method). `init_semantics` is "true init" or the Previous Runs nominal-init description.
+- Windows: interval amounts split by overlap (uniform rate inside a native step; exact when steps end
+  on 03 UTC); Tmax = max of interval maxima or of instantaneous samples; any missing piece → NaN.
+  Negative rain clipped to 0.
 
-### Truth (Phase 1)
-Same grid, dim `time`, vars `rain_mm`, `tmax_c`, plus `provisional` flag (satellite-filled recent days).
+### `truth_v1` (`validate_truth`, built by `truth/build.py`)
+- dims `(time, lat, lon)`; `time` = IMD day label; vars `rain_mm`, `tmax_c` (float32),
+  `provisional(time)` bool = rain from IMERG, not IMD gauges.
+- Rain: IMD where the day exists locally, else IMERG V07 Late (conservative 0.1°→0.25°, all 48
+  half-hours required). Tmax: IMD 1° → 0.25° (one-ring coastal fill + bilinear), never substituted.
+- Masked to IMD land cells. attrs `schema, sources, licence, created_at, tmax_regrid_method`.
+
+### Source matrix
+See DATA_SOURCES.md "Source matrix". Evaluation (dev + test) uses: dynamical.org true-init runs
+(IFS-ENS control as `ecmwf_ifs_ctrl`, AIFS, GFS, GEFS, IFS-ENS, AIFS-ENS) and Open-Meteo Previous
+Runs (IFS HRES, ICON, GEM; nominal init, ~11.5 h staler). Evaluation inits are 00Z only. Live uses
+Single Runs through our archive; ECMWF open data is the IFS fallback.
 
 ### Skill table (Parquet, Phase 2+)
 `source, variable, cell_or_subdivision, lead_bucket, season, valid_time, error, abs_error, sq_error,
@@ -161,8 +191,16 @@ Every response carries the disclaimer (`trustcast.DISCLAIMER`).
 - Native steps: IFS 3 h, AIFS 6 h (Open-Meteo spreads it to hourly), GFS/ICON 1 h. The 03 UTC IMD day
   boundary does not fall on the AIFS 6 h grid; handle explicitly in Phase 1 alignment.
 - dynamical.org keeps full history (no snapshotting needed): AIFS Single 6-hourly from 2024-04-01, AIFS
-  ENS from 2025-07-02, IFS ENS 0.25° 00Z daily from 2024-04-01, GEFS 35-day 00Z daily from 2020-10,
-  GFS from 2021-05, IMERG Early/Late 30-min from 1998. All CC BY 4.0.
+  ENS from 2025-07-02, IFS ENS 0.25° 00Z daily from 2024-04-01 (member 0 = control), GEFS 35-day 00Z
+  daily from 2020-10, GFS from 2021-05, IMERG Early/Late 30-min from 1998. All CC BY 4.0. Precip =
+  average rate since previous step; IMERG time label = start of the half hour.
+- **Open-Meteo Single Runs retention is a rolling ~180 days** (earliest run 2026-04-02 on 2026-09-30):
+  no dev-period data there; only our archive keeps those runs.
+- **Previous Runs** `previous_day{k}` at hour t = run floor_6h(t) − k days (verified). Leak-free for a
+  nominal 00Z init (all runs ≤ init) but ~11.5 h staler than a true init.
+- **IMD day D** = 24 h ending 03 UTC on D (verified on 1,342 day-points). IMD 2026 yearly files are not
+  downloadable yet (empty); 2026 truth is IMERG-provisional until fixed.
+- ECMWF open data: `tp` accumulated from init (m), `mx2t3` 3-hourly max T; recent runs only.
 
 ---
 
