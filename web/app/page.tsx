@@ -35,6 +35,7 @@ export default function Home() {
   const [lead, setLead] = useState(1);
   const [layer, setLayer] = useState("final");
   const [init, setInit] = useState<string>("");
+  const [mountedAt] = useState(() => Date.now()); // read the clock once, not during every render
 
   const products = useApi<{ products: Record<string, string[]> }>("/v1/products");
   const inits = products.data?.products[`${region}/${variable}`] ?? [];
@@ -113,7 +114,12 @@ export default function Home() {
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Legend stops={stops} units={units === "probability" ? "probability" : units} />
-          {grid.data && <span className="text-xs text-[var(--muted)]">Run {grid.data.init_time.slice(0, 10)} 00 UTC · click a district for its card</span>}
+          {grid.data && (
+            <span className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              {mountedAt - Date.parse(grid.data.init_time) > 2 * 86400e3 && <Pill tone="warn">not today&apos;s run: newest available product is from {grid.data.init_time.slice(0, 10)}</Pill>}
+              Run {grid.data.init_time.slice(0, 10)} 00 UTC · click a district for its card
+            </span>
+          )}
         </div>
       </div>
       <Card title="District alerts" right={alerts.data && <span className="text-xs text-[var(--muted)]">{alerts.data.alerts.length}</span>}>

@@ -101,6 +101,7 @@ function DistrictInner() {
         <div>
           <h1 className="text-2xl font-bold">{dist.district}</h1>
           <p className="text-sm text-[var(--muted)]">{dist.state} · {variable === "precip" ? "24 h rainfall (IMD day ending 08:30 IST)" : "daily maximum temperature"} · run {d.data.init_time.slice(0, 10)} 00 UTC</p>
+          {typeof d.data.meta.config_provenance === "string" && <p className="text-xs text-[var(--muted)]">Settings: {d.data.meta.config_provenance}</p>}
         </div>
         <div className="flex gap-2">
           {dist.coverage < 0.5 && <Pill tone="warn">only {Math.round(dist.coverage * 100)} % of district inside pilot region</Pill>}
