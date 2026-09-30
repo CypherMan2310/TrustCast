@@ -24,7 +24,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from trustcast.adapters.base import SourceUnavailable
+from trustcast.adapters.base import QuotaExhausted, SourceUnavailable
+from trustcast.adapters.ledger import QuotaLedger
 from trustcast.adapters.ratelimit import BudgetExhausted, RollingLimiter
 from trustcast.config import OpenMeteoConfig, OpenMeteoSource
 from trustcast.grid.imd_grid import flatten_points
@@ -127,6 +128,7 @@ class OpenMeteoSingleRuns:
         limiter: RollingLimiter | None = None,
         hourly_limiter: RollingLimiter | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        ledger: QuotaLedger | None = None,
     ) -> None:
         self.cfg = cfg
         self.forecast_hours = forecast_hours
@@ -137,6 +139,7 @@ class OpenMeteoSingleRuns:
             cfg.max_locations_per_hour, 3600.0, blocking=False
         )
         self.sleep = sleep
+        self.ledger = ledger
 
     def latest_init(self, src: OpenMeteoSource) -> dt.datetime:
         """Newest init time the provider reports for ``src`` (UTC, naive)."""
@@ -157,10 +160,10 @@ class OpenMeteoSingleRuns:
         for attempt in range(self.cfg.retries + 1):
             try:
                 self.hourly_limiter.acquire(units)
+                if self.ledger is not None:
+                    self.ledger.reserve(units)
             except BudgetExhausted as e:
-                raise SourceUnavailable(
-                    f"local hourly budget exhausted, retry next run: {e}"
-                ) from e
+                raise QuotaExhausted(f"local quota budget exhausted, retry later: {e}") from e
             self.limiter.acquire(units)
             try:
                 r = self.client.get(url or self.cfg.single_runs_url, params=params)
@@ -171,7 +174,7 @@ class OpenMeteoSingleRuns:
             if r.status_code == 429:
                 reason = r.text[:200]
                 if "Minutely" not in reason:  # hourly/daily quota: waiting will not help
-                    raise SourceUnavailable(f"HTTP 429 quota exceeded: {reason}")
+                    raise QuotaExhausted(f"HTTP 429 quota exceeded: {reason}")
                 last_err = f"HTTP 429: {reason}"
                 self.sleep(65)
                 continue

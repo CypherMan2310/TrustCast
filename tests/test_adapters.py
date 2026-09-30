@@ -139,6 +139,43 @@ def test_previous_runs_adapter_uses_day_k_for_lead_k(cfg, tmp_path):
     assert list((tmp_path / "raw" / "openmeteo_prev").rglob("*.json.gz"))
 
 
+def test_previous_runs_land_only_requests_only_land_cells(cfg, tmp_path):
+    # SYNTHETIC IMD rain file: every cell valid except lat 10.25 (row 15 of the IMD grid) = sea
+    from trustcast.grid.imd_grid import IMD_RAIN_0P25
+
+    g = IMD_RAIN_0P25
+
+    arr = np.zeros((2, g.nlat, g.nlon), "<f4")
+    arr[:, 15, :] = -999.0
+    p = tmp_path / "truth" / "rain" / "2024.grd"
+    p.parent.mkdir(parents=True)
+    arr.tofile(p)
+    cfg.previous_runs.land_only = True
+    ad = _prev_adapter(cfg, tmp_path)
+    region = cfg.regions["rain_pilot"]  # lat 10.0..10.5, lon 76.0..76.25
+    ds = ad.fetch(dt.datetime(2025, 10, 20), region)
+    assert ad.points(region).tolist() == [0, 1, 4, 5]  # row 10.25 skipped
+    assert np.isnan(ds.precip_24h_mm.sel(lat=10.25).values).all()
+    assert np.isfinite(ds.precip_24h_mm.sel(lat=10.0).values).all()
+    assert list((tmp_path / "raw" / "openmeteo_prev").rglob("*_land_L5.json.gz"))
+
+
+def test_quota_ledger_shared_between_processes(tmp_path):
+    from trustcast.adapters.ledger import QuotaLedger
+    from trustcast.adapters.ratelimit import BudgetExhausted
+
+    t = [1000.0]
+    a = QuotaLedger(tmp_path / "l.jsonl", cap=9500, who="archiver", clock=lambda: t[0])
+    b = QuotaLedger(tmp_path / "l.jsonl", cap=8000, who="backfill", clock=lambda: t[0])
+    b.reserve(7000)
+    with pytest.raises(BudgetExhausted):
+        b.reserve(1500)  # backfill capped at 8000
+    a.reserve(1500)  # archiver still has headroom
+    assert a.used() == 8500
+    t[0] += 86_401  # window rolls over
+    b.reserve(7000)
+
+
 def test_previous_runs_rejects_non_00z(cfg, tmp_path):
     with pytest.raises(ValueError, match="00Z"):
         _prev_adapter(cfg, tmp_path).fetch(dt.datetime(2025, 10, 20, 12), cfg.regions["rain_pilot"])

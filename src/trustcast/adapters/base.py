@@ -22,6 +22,10 @@ class SourceUnavailable(SourceError):
     """The source could not be reached or returned unusable data."""
 
 
+class QuotaExhausted(SourceUnavailable):
+    """A provider quota (ours or theirs) is used up; retry later, the source itself is fine."""
+
+
 class StaleSource(SourceError):
     """The newest run offered by the source is older than the allowed age."""
 

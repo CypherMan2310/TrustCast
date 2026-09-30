@@ -27,4 +27,5 @@ def cfg() -> Config:
     c.regions["heat_pilot"].lon = (78.0, 78.0)
     c.archiver.forecast_hours = 24
     c.openmeteo.max_locations_per_request = 4
+    c.previous_runs.land_only = False  # tests without IMD files; land-only has its own test
     return c

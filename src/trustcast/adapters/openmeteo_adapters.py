@@ -77,10 +77,20 @@ def _half_month_blocks(dates: list[pd.Timestamp]) -> list[tuple[pd.Timestamp, pd
 
 
 def locations_to_arrays(
-    locations: list[dict[str, Any]], lats: np.ndarray, lons: np.ndarray, keys: list[str]
+    locations: list[dict[str, Any]],
+    lats: np.ndarray,
+    lons: np.ndarray,
+    keys: list[str],
+    points: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """Per-location JSON -> (times, {key: array(time, lat, lon)}). Nulls become NaN."""
-    req_lat, req_lon = flatten_points(lats, lons)
+    """Per-location JSON -> (times, {key: array(time, lat, lon)}). Nulls become NaN.
+
+    ``points`` = flat row-major indices of the requested grid points (default: all). Grid points
+    that were not requested stay NaN.
+    """
+    all_lat, all_lon = flatten_points(lats, lons)
+    points = np.arange(all_lat.size) if points is None else np.asarray(points)
+    req_lat, req_lon = all_lat[points], all_lon[points]
     if len(locations) != req_lat.size:
         raise SourceUnavailable(f"expected {req_lat.size} locations, got {len(locations)}")
     times = pd.to_datetime(locations[0]["hourly"]["time"]).values
@@ -91,7 +101,7 @@ def locations_to_arrays(
             raise SourceUnavailable(f"location {n} is {off:.2f} deg from the requested point")
         if loc["hourly"]["time"] != locations[0]["hourly"]["time"]:
             raise SourceUnavailable(f"location {n} has a different time axis")
-        i, j = divmod(n, lons.size)
+        i, j = divmod(int(points[n]), lons.size)
         for k in keys:
             out[k][:, i, j] = np.array(
                 [np.nan if x is None else x for x in loc["hourly"][k]], np.float32
@@ -115,9 +125,22 @@ class OpenMeteoPreviousRunsAdapter(SourceAdapter):
             f"{v}_previous_day{k}" for v in PREV_VARS for k in range(1, self.lead_days + 1)
         ]
         self.grid = RegularGrid.from_config(cfg.grid)
+        self.land_only = cfg.previous_runs.land_only
+        self._points: dict[str, np.ndarray] = {}
+
+    def points(self, bbox: RegionConfig) -> np.ndarray | None:
+        """Flat indices of the grid points to request (IMD land cells if ``land_only``)."""
+        if not self.land_only:
+            return None
+        if bbox.name not in self._points:
+            from trustcast.truth.build import imd_land_mask
+
+            mask = imd_land_mask(self.root, bbox).values
+            self._points[bbox.name] = np.flatnonzero(mask.ravel())
+        return self._points[bbox.name]
 
     def _cache_path(self, region: str, b0: pd.Timestamp) -> Path:
-        tag = "a" if b0.day == 1 else "b"
+        tag = ("a" if b0.day == 1 else "b") + ("_land" if self.land_only else "")
         return (
             self.root
             / "raw"
@@ -134,11 +157,14 @@ class OpenMeteoPreviousRunsAdapter(SourceAdapter):
         today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
         cacheable = b1 <= today - pd.Timedelta(days=self.lead_days + 2)
         path = self._cache_path(bbox.name or "adhoc", b0)
+        pts = self.points(bbox)
         if cacheable and path.exists():
             with gzip.open(path, "rb") as f:
                 payload = json.loads(f.read())
         else:
             req_lat, req_lon = flatten_points(lats, lons)
+            if pts is not None:
+                req_lat, req_lon = req_lat[pts], req_lon[pts]
             n = self.cfg.openmeteo.max_locations_per_request
             ndays = (b1 - b0).days + 1
             weight = max(1.0, len(self.keys) / 10) * max(1.0, ndays / 14)
@@ -168,6 +194,7 @@ class OpenMeteoPreviousRunsAdapter(SourceAdapter):
                 "fetched_at": dt.datetime.now(dt.UTC).isoformat(),
                 "url": self.cfg.previous_runs.url,
                 "batches": batches,
+                "points": None if pts is None else pts.tolist(),
             }
             event(
                 log,
@@ -185,7 +212,9 @@ class OpenMeteoPreviousRunsAdapter(SourceAdapter):
             if cacheable:
                 write_raw(payload, path)
         locations = [loc for b in payload["batches"] for loc in b["response"]]
-        times, arrays = locations_to_arrays(locations, lats, lons, self.keys)
+        used = payload.get("points")  # points the block was fetched for
+        used = None if used is None else np.asarray(used, dtype=int)
+        times, arrays = locations_to_arrays(locations, lats, lons, self.keys, used)
         return times, arrays, payload["fetched_at"]
 
     def fetch_many(self, inits: list[dt.datetime], bbox: RegionConfig) -> xr.Dataset:

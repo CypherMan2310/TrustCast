@@ -223,3 +223,54 @@ ECMWF open data GRIB → canonical: rain r = 0.9989, mean |Δ| 0.16 mm; Tmax Δ 
 3. AIFS-ENS starts 2025-07-02: only ~6 months of dev data.
 4. A first build run died once after `ifs_prev` with no traceback captured; the only reproduced failure was
    the Windows rename error (fixed). Watch for recurrences.
+
+---
+
+## 2026-09-30: Phase 2, verification harness (data backfill running)
+
+User: "continue as existing", i.e. go ahead with the recommendation: Previous Runs on IMD land cells
+only, GEM kept for the development years, backfill now in the background.
+
+### Built
+| File | What |
+|---|---|
+| `adapters/ledger.py` | cross-process Open-Meteo quota ledger (archiver cap 9,500, backfill 8,000 per 24 h) |
+| `adapters/base.py` | `QuotaExhausted` (retry later) vs `SourceUnavailable` (source broken) |
+| `adapters/openmeteo_adapters.py` | Previous Runs requests IMD land cells only (`*_land_L5` cache blocks) |
+| `scripts/backfill_canonical.py` | monthly canonical stores, resumable; sleeps to 00:10 UTC on the daily limit; 2 threads for dynamical.org (4 gave no speed-up) |
+| `scripts/build_truth.py`, `scripts/download_imd_history.py` | monthly truth; IMD 1991-2023 history |
+| `verify/metrics.py` | sufficient-statistic metrics, vectorised for the bootstrap; fair CRPS |
+| `verify/bootstrap.py` | paired block bootstrap (5-day blocks), CI and p-value |
+| `verify/data.py` | load/pair stores; drops valid days >= 2026-01-01 unless `allow_test` |
+| `blend/baselines.py` | equal mean, rolling-origin ridge superensemble, persistence, climatology |
+| `verify/scoreboard.py` | stratified scoreboard, common-sample scoring, reliability, skill table |
+| `scripts/run_verification.py` | one command for all tables/figures in `reports/phase2/` |
+
+Tests: **104 passed** (1 live deselected); ruff clean. Includes the superensemble leakage test (target-month
+observations changed → target-month predictions unchanged) and a bootstrap null-rate check (≤ 15 % of 60
+equal-skill trials flagged).
+
+### Incidents and decisions
+- **Open-Meteo daily limit hit at ~14:00 UTC** ("Daily API request limit exceeded"). Today's probes, week
+  builds and the archiver all counted against it; our ledger only started recording at the backfill.
+  Consequences: the archiver's 15:30/21:30 UTC runs today will fail and back-fill tomorrow (lookback 2
+  cycles; Single Runs keeps ~180 days, so nothing is lost). The backfill now sleeps until 00:10 UTC on a
+  daily-limit 429 instead of polling.
+- **Headline scores were not comparable** in the first scoreboard draft (each forecast was scored on its
+  own cases; in January 2024 GFS had 31 inits, ICON/GEM 12). Fixed: every table is scored on a common
+  sample. Samples: `main` (valid days from 2024-04-01, all but AIFS-ENS), `late` (from 2025-07-02, all).
+  Forecasts with < 50 % of the best coverage are left out and listed; paired diffs also use common cases.
+- Previous Runs coverage (backfill): IFS HRES has no data in Jan 2024 (prototype showed "usable from
+  2024-03"); ICON and GEM start 2024-01-20.
+- Superensemble = ridge (λ = 1 on standardised inputs), per lead, pooled over cells, refit monthly on an
+  expanding window, ≥ 90 training days; a case needs all selected sources.
+- Climatology baseline and Brier skill need all 30 years of the IMD 1991–2020 normal; with a partial normal
+  they are omitted, not approximated. IMD history download is running; Tmax 2000 failed once (retry later).
+- Regime stratification waits for Phase 4 labels (`regime = "all"` in the skill table).
+
+### Background jobs (started 2026-09-30 ~14:00 UTC)
+- dynamical.org backfill (6 adapters x 2 regions x 2024-01..2025-12); GEFS ~36 s/init dominates.
+- Previous Runs backfill (3 models x 2 regions); estimated ~10–12 days at 8,000 units/day minus the archiver.
+- IMD history download 1991-2023 (Tmax, then rain ~25 MB/yr).
+- Archiver scheduler (since 12:40 UTC).
+These are processes of this session; if the session or machine stops, rerun the same commands (all resume).

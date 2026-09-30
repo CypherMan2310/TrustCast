@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from trustcast.adapters.ledger import QuotaLedger
 from trustcast.adapters.openmeteo import OpenMeteoSingleRuns
 from trustcast.archive.runner import archive_all
 from trustcast.config import data_root, load_config
@@ -40,7 +41,9 @@ def main() -> int:
     root = Path(args.data_dir) if args.data_dir else data_root()
     setup_logging(root / "logs" / "archiver.jsonl")
     a = cfg.archiver
-    client = OpenMeteoSingleRuns(cfg.openmeteo, a.forecast_hours, a.hourly_variables)
+    om = cfg.openmeteo
+    ledger = QuotaLedger(root / om.ledger, om.archiver_daily_cap, who="archiver")
+    client = OpenMeteoSingleRuns(om, a.forecast_hours, a.hourly_variables, ledger=ledger)
     results = archive_all(cfg, root, client, sources=args.sources, regions=args.regions)
 
     counts = collections.Counter(r.status for r in results)

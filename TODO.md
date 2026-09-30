@@ -42,9 +42,18 @@ Work items per module, each with an acceptance check. Tick only when the check h
       documented (WORK.md). Check: `scripts/build_canonical.py` reports for rain_pilot and heat_pilot.
 - [ ] **Open:** IMD 2026 rain/Tmax files (needed before Phase 8). Check: `data/truth/{rain,tmax}/2026.*` non-empty.
 
-## Phase 2: Baselines and verification harness (STOP gate), next
-- [ ] Bulk backfill of canonical data for the dev period (2024-01..2025-12; AIFS-ENS from 2025-07) with quota-aware resume.
-- [ ] Baselines: each source, equal-weight mean, static regression-weighted superensemble, climatology, persistence.
-- [ ] Metrics: RMSE, MAE, bias, CRPS, Brier skill, reliability, ETS/CSI/POD/FAR/frequency bias at 64.5 / 115.6 mm.
-- [ ] Stratification: region × lead × season × regime; paired block bootstrap (5-day blocks) with unit tests.
-- [ ] One command regenerates every table/figure. Report the baseline scoreboard, then STOP.
+## Phase 2: Baselines and verification harness (STOP gate), in progress
+- [x] Quota-safe bulk backfill (`scripts/backfill_canonical.py`, resumable, cross-process ledger, land cells only).
+      Check: real month built (icon_prev heat_pilot 2025-10, 31 inits, 0 missing).
+- [ ] **Backfill complete** for 2024-01..2025-12 (both regions): dynamical.org (~hours) and Previous Runs
+      (~10–12 days at the free quota). Check: `reports/phase2/coverage.csv`.
+- [x] Dev truth, monthly, both regions (`scripts/build_truth.py`). Check: 24 months x 2 regions, 0 provisional.
+- [ ] IMD 1991–2020 normal on disk (climatology baseline + BSS reference). Check: `download_imd_history.py` reports no failures.
+- [x] Baselines: equal mean, rolling-origin superensemble, persistence, climatology (code). Check: `tests/test_baselines.py`
+      incl. superensemble leakage test.
+- [x] Metrics (RMSE, MAE, bias, fair CRPS, Brier/BSS, reliability, ETS/CSI/POD/FAR/fbias). Check: `tests/test_verify.py`.
+- [x] Paired block bootstrap (5-day blocks), unit-tested on synthetic fixtures incl. a null-rate check.
+- [x] Stratification region x lead x season; common-sample scoring; skill table Parquet. Check: `tests/test_scoreboard.py`.
+- [ ] Regime stratum (needs Phase 4 regime labels; `regime = "all"` until then).
+- [x] One command: `python scripts/run_verification.py` regenerates all tables/figures in `reports/phase2/`.
+- [ ] Report the baseline scoreboard to the user, then STOP.

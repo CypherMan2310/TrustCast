@@ -36,6 +36,10 @@ openmeteo:
   max_locations_per_minute: 400
   max_locations_per_hour: 4000     # per process; stays under the 5000/h provider limit
   max_locations_per_request: 150
+  # Cross-process rolling-24 h ledger (data root relative). Provider daily limit 10,000.
+  ledger: logs/openmeteo_ledger.jsonl
+  archiver_daily_cap: 9500           # archiver may use nearly everything; it must never starve
+  backfill_daily_cap: 8000           # backfill stops at 8,000 so the archiver keeps >= 1,500 headroom
   timeout_s: 120
   retries: 3
   sources:
@@ -90,3 +94,4 @@ adapters:
 
 previous_runs:
   url: "https://previous-runs-api.open-meteo.com/v1/forecast"
+  land_only: true                    # request only IMD land cells (sea cells are never verified)

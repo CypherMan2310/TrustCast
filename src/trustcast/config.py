@@ -70,6 +70,9 @@ class OpenMeteoConfig(BaseModel):
     max_locations_per_minute: int = 400
     max_locations_per_hour: int = 4000
     max_locations_per_request: int = 150
+    ledger: str = "logs/openmeteo_ledger.jsonl"
+    archiver_daily_cap: int = 9500
+    backfill_daily_cap: int = 8000
     timeout_s: float = 120
     retries: int = 3
     sources: list[OpenMeteoSource]
@@ -108,6 +111,7 @@ class PreviousRunsConfig(BaseModel):
     """Open-Meteo Previous Runs endpoint."""
 
     url: str
+    land_only: bool = True
 
 
 class Config(BaseModel):
