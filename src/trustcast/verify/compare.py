@@ -40,8 +40,51 @@ def pooled_rmse(fcs: list[xr.DataArray], obs: xr.DataArray, mask: xr.DataArray) 
     return [float(np.sqrt(((f - obs) ** 2).where(common).mean())) for f in fcs]
 
 
+MIN_REL_COVERAGE = 0.5
+
+
+def pick_forecasts(allf, obs, start, exclude=(), end=None, keep=()):
+    """Forecasts with >= 50 % of the best lead-1 coverage in [start, end]; returns (kept, dropped).
+
+    A common-sample table is only as large as its sparsest member, so forecasts with little data in
+    the window are left out (and listed) rather than silently shrinking every row. Names in ``keep``
+    are kept whenever they have any data (layer candidate and reference).
+    """
+    days = pd.DatetimeIndex(obs.valid_day.isel(lead_h=0).values)
+    inwin = np.asarray(days >= pd.Timestamp(start))
+    if end is not None:
+        inwin &= np.asarray(days <= pd.Timestamp(end))
+    ob_ok = np.isfinite(obs.isel(lead_h=0).values[inwin])
+    cov = {}
+    for f in allf:
+        if f.name in exclude:
+            continue
+        v = np.isfinite(f.det.isel(lead_h=0).values[inwin]) & ob_ok
+        cov[f.name] = v.sum() / max(ob_ok.sum(), 1)
+    best = max(cov.values(), default=0)
+    kept = [
+        f
+        for f in allf
+        if f.name in cov
+        and best > 0
+        and (cov[f.name] >= MIN_REL_COVERAGE * best or (f.name in keep and cov[f.name] > 0))
+    ]
+    dropped = {n: round(float(c), 3) for n, c in cov.items() if n not in {f.name for f in kept}}
+    return kept, dropped
+
+
 def verdict(sb: pd.DataFrame, candidate: str, reference: str) -> dict:
     """Apply the gate rule to scoreboard rows (season 'all') of ``candidate`` vs ``reference``."""
+    if sb.empty or "forecast" not in sb:
+        return {
+            "candidate": candidate,
+            "reference": reference,
+            "leads_significantly_better": 0,
+            "leads_significantly_worse": 0,
+            "mean_d_rmse": float("nan"),
+            "passes": False,
+            "note": "no common cases in the holdout window",
+        }
     rows = sb[(sb.forecast == candidate) & (sb.season == "all")].sort_values("lead_day")
     better = int((rows["d_rmse_hi"] < 0).sum())
     worse = int((rows["d_rmse_lo"] > 0).sum())

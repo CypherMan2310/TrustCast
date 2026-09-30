@@ -337,7 +337,8 @@ def skill_map(
             )
     from trustcast.pipeline import config_from_selection
 
-    hl = config_from_selection(region, variable)[0].half_life  # tuned value, else the default in use
+    pc, _ = config_from_selection(region, variable)
+    hl = pc.half_life  # tuned value, else the default in use
     return S.SkillMap(
         region=region,
         variable=variable,

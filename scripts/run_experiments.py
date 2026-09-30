@@ -46,6 +46,7 @@ from trustcast.verify.compare import (
     brier_compare,
     coverage_by_lead,
     defer_stats,
+    pick_forecasts,
     pooled_rmse,
     reliability_rows,
     verdict,
@@ -71,9 +72,15 @@ def md_table(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
     return df.to_markdown(index=False, floatfmt=floatfmt) if len(df) else "_(no rows)_"
 
 
+DROPPED: dict[str, dict] = {}
+
+
 def holdout_board(fcs, b, ref, ref_prob, n_boot, sample):
+    """Holdout scoreboard on a common sample; low-coverage forecasts are left out and recorded."""
+    kept, dropped = pick_forecasts(fcs, b.obs, HOLDOUT[0], end=HOLDOUT[1], keep={ref, fcs[0].name})
+    DROPPED[f"{sample}/{b.region}/{b.variable}"] = dropped
     return scoreboard(
-        fcs,
+        kept,
         b.obs,
         b.variable,
         b.region,
@@ -458,6 +465,8 @@ def write_reports(results):
             },
             "runtime_s": out["runtime_s"],
         }
+    md3 += ["", "## Forecasts left out of holdout tables (coverage < 50 % of the best)", ""]
+    md3 += [f"- {k}: {v}" for k, v in DROPPED.items() if v] or ["- none"]
     (REPORTS / "phase3" / "PHASE3.md").write_text("\n".join(md3), encoding="utf-8")
     (REPORTS / "phase4" / "PHASE4.md").write_text("\n".join(md4), encoding="utf-8")
     (REPORTS / "phase5" / "PHASE5.md").write_text("\n".join(md5), encoding="utf-8")

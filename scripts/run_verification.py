@@ -34,6 +34,7 @@ sys.path.insert(0, str(REPO / "src"))
 from trustcast import DISCLAIMER
 from trustcast.config import data_root, load_config
 from trustcast.verify.assemble import assemble, baselines
+from trustcast.verify.compare import pick_forecasts
 from trustcast.verify.scoreboard import (
     THRESHOLDS,
     reliability,
@@ -49,26 +50,6 @@ SAMPLES = {
     "main": {"start": pd.Timestamp("2024-04-01"), "exclude": {"ecmwf_aifs_ens"}},
     "late": {"start": pd.Timestamp("2025-07-02"), "exclude": set()},
 }
-MIN_REL_COVERAGE = 0.5
-
-
-def pick_forecasts(allf, obs, start, exclude):
-    """Forecasts with >= 50 % of the best lead-1 coverage in the window; returns (kept, dropped)."""
-    days = pd.DatetimeIndex(obs.valid_day.isel(lead_h=0).values)
-    inwin = np.asarray(days >= start)
-    ob_ok = np.isfinite(obs.isel(lead_h=0).values[inwin])
-    cov = {}
-    for f in allf:
-        if f.name in exclude:
-            continue
-        v = np.isfinite(f.det.isel(lead_h=0).values[inwin]) & ob_ok
-        cov[f.name] = v.sum() / max(ob_ok.sum(), 1)
-    best = max(cov.values(), default=0)
-    kept = [
-        f for f in allf if f.name in cov and cov[f.name] >= MIN_REL_COVERAGE * best and best > 0
-    ]
-    dropped = {n: round(float(c), 3) for n, c in cov.items() if n not in {f.name for f in kept}}
-    return kept, dropped
 
 
 OUT = REPO / "reports" / "phase2"
