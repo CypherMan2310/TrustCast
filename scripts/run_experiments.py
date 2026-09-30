@@ -119,24 +119,41 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
     obs = b.obs.where(land)
 
     # ------------------------------------------------------------------ Phase 3
+    from trustcast.bias.decayed import decayed_bias_correction
     from trustcast.bias.qm import rolling_qm
 
     raw = {f.name: f.det.where(land) for f in b.forecasts}
-    qm = {n: rolling_qm(d, obs, kind) for n, d in raw.items()}
     eq_raw = equal_mean(raw).assign_coords(valid_day=b.like.valid_day)
-    eq_qm = equal_mean(qm).assign_coords(valid_day=b.like.valid_day)
+    # L1 candidates: pooled quantile mapping; for temperature also per-cell decayed bias removal
+    # and both. The best on the tune window is then gated against raw on the holdout.
+    qm = {n: rolling_qm(d, obs, kind) for n, d in raw.items()}
+    l1_opts = {"qm": (True, False, qm)}
+    if kind == "temp":
+        cell = {n: decayed_bias_correction(d, obs) for n, d in raw.items()}
+        both = {n: decayed_bias_correction(d, obs) for n, d in qm.items()}
+        l1_opts |= {"cell_bias": (False, True, cell), "qm+cell_bias": (True, True, both)}
+    l1_tune = {
+        k: pooled_rmse([equal_mean(v[2]).assign_coords(valid_day=b.like.valid_day)], obs, tune_m)[0]
+        for k, v in l1_opts.items()
+    }
+    l1_name = min(l1_tune, key=l1_tune.get)
+    use_qm, use_cell, corrected = l1_opts[l1_name]
+    eq_l1 = equal_mean(corrected).assign_coords(valid_day=b.like.valid_day)
+    cand = f"equal_mean_{l1_name}"
     sb_l1 = holdout_board(
-        [Forecast("equal_mean_qm", "L1", eq_qm), Forecast("equal_mean", "baseline", eq_raw)],
+        [Forecast(cand, "L1", eq_l1), Forecast("equal_mean", "baseline", eq_raw)],
         b,
         "equal_mean",
         ref_prob,
         n_boot,
         "L1",
     )
-    v_l1 = verdict(sb_l1, "equal_mean_qm", "equal_mean")
+    v_l1 = verdict(sb_l1, cand, "equal_mean") | {"variant": l1_name, "tune_rmse": l1_tune}
     log(f"{region} {variable} L1 {v_l1}")
-    dets = qm if v_l1["passes"] else raw
-    eq_prev = eq_qm if v_l1["passes"] else eq_raw
+    if not v_l1["passes"]:
+        use_qm, use_cell = False, False
+    dets = corrected if v_l1["passes"] else raw
+    eq_prev = eq_l1 if v_l1["passes"] else eq_raw
 
     grid_rows = []
     dm_cache = {}
@@ -157,7 +174,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
     log(f"{region} {variable} A best {best}")
     ba, _ = blend_a(dets, dm_cache[(best["half_life"], best["scope"])], best["p"])
     fa = Forecast("blend_A", "L3A", ba)
-    prev_name = "equal_mean_qm" if v_l1["passes"] else "equal_mean"
+    prev_name = cand if v_l1["passes"] else "equal_mean"
     fprev = Forecast(prev_name, "prev", eq_prev)
     sb3 = holdout_board(
         [fa, fprev, *[f for f in base if f.name in ("superensemble", "climatology", "persistence")]]
@@ -175,7 +192,8 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
 
     # ------------------------------------------------------------------ Phase 4
     pc = PipelineConfig(
-        qm=v_l1["passes"],
+        qm=use_qm,
+        cell_bias=use_cell,
         half_life=best["half_life"],
         p=best["p"],
         scope=best["scope"],
@@ -271,7 +289,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
         variants = {
             "full": full_cfg,
             "no_AI_sources": full_cfg.but(exclude_sources=AI_SOURCES),
-            "no_bias_correction": full_cfg.but(qm=False),
+            "no_bias_correction": full_cfg.but(qm=False, cell_bias=False),
             "no_gate (A only)": full_cfg.but(gate=False),
             "no_extreme_layer": full_cfg.but(extremes=False),
             "no_regime_features": full_cfg.but(regime_features=False),
@@ -453,6 +471,7 @@ def write_reports(results):
         ]
         selection["models"][tag] = {
             "qm": full_cfg.qm,
+            "cell_bias": full_cfg.cell_bias,
             "half_life": full_cfg.half_life,
             "p": full_cfg.p,
             "scope": full_cfg.scope,

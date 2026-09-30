@@ -168,3 +168,20 @@ def test_blend_graceful_degradation_each_source_removed():
     part, wp = blend_a(gap, dm, p=1)
     assert np.isfinite(part.values).all()
     assert np.allclose(wp.sel(source="a").isel(init_time=50).values, 0.0)
+
+
+def test_decayed_bias_correction_removes_cell_specific_bias_without_leakage():
+    from trustcast.bias.decayed import decayed_bias_correction
+
+    rng = np.random.default_rng(6)  # SYNTHETIC: cell 0 is 3 C too warm, cell 1 is 2 C too cold
+    o = rng.normal(32, 1.5, (200, 2, 2, 1))
+    f = o + np.array([3.0, -2.0])[None, None, :, None] + rng.normal(0, 0.5, o.shape)
+    obs, fc = _da(o), _da(f)
+    out = decayed_bias_correction(fc, obs, half_life_days=20)
+    late = slice(100, None)
+    for cell in (0, 1):
+        assert abs(float((out[late, :, cell] - obs[late, :, cell]).mean())) < 0.2
+    obs2 = obs.copy()
+    obs2.values[150:] += 50  # corrupt later observations
+    out2 = decayed_bias_correction(fc, obs2, half_life_days=20)
+    assert np.allclose(out.values[:150], out2.values[:150])  # earlier corrections unchanged

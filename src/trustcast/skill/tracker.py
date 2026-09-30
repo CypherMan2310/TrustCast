@@ -28,10 +28,34 @@ def decayed_mse(
 ) -> xr.DataArray:
     """DMSE available at each init, dims (init_time, lead_h, lat, lon). NaN until ``min_eff``
     effective cases have been verified. ``scope``: "cell" (per grid cell) or "region" (pooled)."""
+    return decayed_stat(fc, obs, half_life_days, scope, min_eff, squared=True)
+
+
+def decayed_bias(
+    fc: xr.DataArray,
+    obs: xr.DataArray,
+    half_life_days: float,
+    scope: str = "cell",
+    min_eff: float = 3.0,
+) -> xr.DataArray:
+    """Decayed mean error (forecast - observation) available at each init; same leak-free rule."""
+    return decayed_stat(fc, obs, half_life_days, scope, min_eff, squared=False)
+
+
+def decayed_stat(
+    fc: xr.DataArray,
+    obs: xr.DataArray,
+    half_life_days: float,
+    scope: str = "cell",
+    min_eff: float = 3.0,
+    squared: bool = True,
+) -> xr.DataArray:
+    """Exponentially decayed mean of the (squared) error, leak-free (see module docstring)."""
     if scope not in ("cell", "region"):
         raise ValueError("scope must be 'cell' or 'region'")
     f = fc.transpose("init_time", "lead_h", "lat", "lon")
-    err2 = ((f - obs.transpose("init_time", "lead_h", "lat", "lon")) ** 2).values
+    err = (f - obs.transpose("init_time", "lead_h", "lat", "lon")).values
+    err2 = err**2 if squared else err
     inits = pd.DatetimeIndex(f.init_time.values).normalize()
     vd = (
         pd.DatetimeIndex(f["valid_day"].values.ravel())

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from trustcast.bias.decayed import decayed_bias_correction
 from trustcast.bias.qm import rolling_qm
 from trustcast.blend.baselines import clim_for
 from trustcast.blend.decayed import blend_a
@@ -46,6 +47,7 @@ class PipelineConfig:
     """Layer switches and hyperparameters (tuned values live in config/model_selection.yaml)."""
 
     qm: bool = True
+    cell_bias: bool = False  # per-cell decayed bias removal (temperature only)
     half_life: float = 30.0
     p: float = 2.0
     scope: str = "cell"
@@ -118,6 +120,8 @@ def run_pipeline(
     members = {f.name: f.ens.where(land) for f in srcs if f.ens is not None}
     obs = b.obs.where(land)
     dets = {n: rolling_qm(d, obs, kind) if cfg.qm else d for n, d in raw.items()}
+    if cfg.cell_bias and kind == "temp":
+        dets = {n: decayed_bias_correction(d, obs) for n, d in dets.items()}
     dmse = {n: decayed_mse(d, obs, cfg.half_life, cfg.scope) for n, d in dets.items()}
     if penalties:
         dmse = {n: d * penalties[n] if n in penalties else d for n, d in dmse.items()}
@@ -217,7 +221,17 @@ def config_from_selection(region: str, variable: str, path=None) -> tuple[Pipeli
     sel = (yaml.safe_load(p.read_text()) or {}).get("models", {}).get(f"{region}_{variable}")
     if not sel:
         return PipelineConfig(), f"defaults (no entry for {region}_{variable} in {p.name})"
-    keys = ("qm", "half_life", "p", "scope", "gate", "temperature", "extremes", "uncertainty")
+    keys = (
+        "qm",
+        "cell_bias",
+        "half_life",
+        "p",
+        "scope",
+        "gate",
+        "temperature",
+        "extremes",
+        "uncertainty",
+    )
     return PipelineConfig(
         **{k: sel[k] for k in keys if k in sel}
     ), f"{p.name} ({sel.get('verdicts')})"
