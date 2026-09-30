@@ -19,6 +19,7 @@ import xarray as xr
 import yaml
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from trustcast import DISCLAIMER, __version__
 from trustcast.alerts.bulletin import bulletin_numbers, render, validate
@@ -34,6 +35,9 @@ app = FastAPI(
     description=f"Hybrid AI-NWP multi-model forecast blending (SIH26081). **{DISCLAIMER}**",
 )
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+_reports_dir = Path(os.environ.get("TRUSTCAST_REPORTS_DIR") or (REPO_ROOT / "reports"))
+_reports_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/reports", StaticFiles(directory=_reports_dir), name="reports")  # figures, read-only
 UNITS = {"precip": "mm/day", "tmax": "degC"}
 EVENT_T = {"precip": "64.5", "tmax": "40.0"}
 

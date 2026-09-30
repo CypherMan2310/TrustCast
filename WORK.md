@@ -274,3 +274,30 @@ equal-skill trials flagged).
 - IMD history download 1991-2023 (Tmax, then rain ~25 MB/yr).
 - Archiver scheduler (since 12:40 UTC).
 These are processes of this session; if the session or machine stops, rerun the same commands (all resume).
+
+---
+
+## 2026-09-30 (late): Phases 3-7 code done; frontend started; STOPPED at usage limit
+
+Done (committed f545a26 + this commit): Phase 3-5 layers (QM, leak-free tracker, blender A,
+LightGBM gate, regimes, tail map + calibrated classifiers, CQR intervals, defer flag, SHAP explanations),
+pipeline with ablation switches, `scripts/run_experiments.py` (pre-registered gate rule), districts,
+products writer, FastAPI v1 (contract tests pass), bulletins EN/HI with number validation, CAP 1.2 Draft,
+SQLite overrides feeding skill penalties. **Tmax pairing bug found and fixed** (IMD Tmax of day D pairs
+with window labelled D+1; verified on real data). 135 tests pass.
+
+Not yet run: `run_experiments.py` / `run_verification.py` on real data. They are waiting for the
+backfill, so no Phase 2-5 metrics exist yet and none are claimed.
+
+Remaining:
+1. Frontend pages (map, district card, skill, verification, sources, replay). Only `lib/`, `components/`,
+   layout and CSS are written; `npm run build` has not been run.
+2. `/v1/district/{id}` endpoint; `scripts/run_forecast.py` (live products); `scripts/build_replays.py`
+   (Wayanad Jul-2024, Vidarbha heat May-2024, plus a third event).
+3. Collect 2026 data (`backfill_canonical.py --collect-test`, `build_truth.py --allow-test`). IMD 2026 is
+   still unavailable.
+4. Run the experiments, write the Phase 2/5 reports, then Phase 8 (frozen test once, README, deploy configs,
+   demo dry-runs).
+
+Background jobs (this session only): dynamical fast-source backfill, GEFS backfill, Previous Runs backfill
+(sleeping until 00:10 UTC for the Open-Meteo daily quota), archiver scheduler.
