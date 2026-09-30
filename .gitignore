@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Secrets
+.env
+
+# Data (never commit; manifests describe it)
+data/**
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/skill/.gitkeep
+!data/truth/.gitkeep
+
+# Frontend
+web/node_modules/
+web/.next/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

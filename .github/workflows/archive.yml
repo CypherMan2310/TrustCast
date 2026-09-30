@@ -1,0 +1,37 @@
+name: daily-archiver
+
+# Snapshots the latest 00Z/12Z runs for the pilot regions.
+# Data is NOT committed to git: each run uploads data/ as a workflow artifact (90-day
+# retention). Pull artifacts locally with `gh run download` well within 90 days.
+on:
+  schedule:
+    - cron: "30 9 * * *"    # after 00Z runs (IFS ~08:00 UTC, GFS ~09:05 UTC)
+    - cron: "30 21 * * *"   # after 12Z runs
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Archive
+        run: python scripts/archive_run.py
+      - name: Verify manifests
+        if: always()
+        run: python scripts/verify_archive.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-${{ github.run_id }}
+          path: |
+            data/raw/openmeteo
+            data/processed/archive
+            data/logs
+          retention-days: 90

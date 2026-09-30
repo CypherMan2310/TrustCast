@@ -1,0 +1,61 @@
+# TRUSTCAST pilot configuration. Loaded by trustcast.config.load_config().
+# Every change here must be logged in WORK.md.
+
+# IMD 0.25 deg rainfall grid (imdlib / IMD .grd spec): lat 6.5..38.5, lon 66.5..100.0
+grid:
+  name: imd_0p25
+  lat0: 6.5
+  lon0: 66.5
+  step: 0.25
+  nlat: 129
+  nlon: 135
+
+# Pilot regions (assumption logged in WORK.md 2026-09-30). Bounds are inclusive and must sit on the grid.
+regions:
+  rain_pilot:
+    label: "Kerala + Coastal Karnataka (rain; covers Wayanad Jul-2024 replay)"
+    lat: [8.0, 13.0]
+    lon: [74.5, 77.5]
+  heat_pilot:
+    label: "Vidarbha (heat; 2024 heatwave replay)"
+    lat: [19.0, 22.0]
+    lon: [77.0, 80.0]
+
+archiver:
+  cycles_utc: [0, 12]          # only 00Z and 12Z runs are archived
+  lookback_cycles: 2           # newest 00/12Z cycle + the one before (back-fills one missed run)
+  forecast_hours: 168          # 7 days of hourly output (leads 0..167 h)
+  max_run_age_hours: 48        # a source whose newest 00/12Z run is older than this is flagged STALE
+  hourly_variables: [precipitation, temperature_2m]
+
+# Open-Meteo Single Runs API sources (ids verified live on 2026-09-30, see DATA_SOURCES.md)
+openmeteo:
+  single_runs_url: "https://single-runs-api.open-meteo.com/v1/forecast"
+  meta_url: "https://api.open-meteo.com/data/{meta_id}/static/meta.json"
+  # Free tier: 600 calls/min, 5000/h, 10000/day; each location counts as one call.
+  max_locations_per_minute: 400
+  max_locations_per_hour: 4000     # per process; stays under the 5000/h provider limit
+  max_locations_per_request: 150
+  timeout_s: 120
+  retries: 3
+  sources:
+    - source: ecmwf_ifs
+      model: ecmwf_ifs025
+      meta_id: ecmwf_ifs025
+      kind: nwp
+    - source: ecmwf_aifs
+      model: ecmwf_aifs025_single
+      meta_id: ecmwf_aifs025_single
+      kind: ai
+    - source: ncep_gfs
+      model: gfs_global            # ncep_gfs025 returns all-NaN on Single Runs (2026-09-30)
+      meta_id: ncep_gfs025
+      kind: nwp
+    - source: dwd_icon
+      model: icon_global
+      meta_id: dwd_icon
+      kind: nwp
+    - source: cmc_gem
+      model: gem_global
+      meta_id: cmc_gem_gdps        # last init 2026-05-26 at check time: expect STALE
+      kind: nwp

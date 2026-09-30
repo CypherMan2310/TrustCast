@@ -1,0 +1,28 @@
+[project]
+name = "trustcast"
+version = "0.0.1"
+description = "TRUSTCAST: hybrid AI-NWP multi-model forecast blending (SIH26081)"
+requires-python = ">=3.12,<3.13"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not live'"
+markers = [
+    "live: hits real network services; run explicitly with `pytest -m live`",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["prototype", "web", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = ["N818"]   # exception names are fixed by the brief (NotConfigured)
