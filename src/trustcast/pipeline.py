@@ -197,3 +197,27 @@ def run_pipeline(
         res.quantiles = {k: _grid_da(v, like).where(land) for k, v in q.items()}
         res.lo, res.hi = _grid_da(lo, like).where(land), _grid_da(hi, like).where(land)
     return res
+
+
+def config_from_selection(region: str, variable: str, path=None) -> tuple[PipelineConfig, str]:
+    """PipelineConfig from ``config/model_selection.yaml`` (written by run_experiments.py).
+
+    Returns (config, provenance). Without a selection file the defaults are used and the provenance
+    says so, so products never claim tuned settings they do not have.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from trustcast.config import REPO_ROOT
+
+    p = Path(path) if path else REPO_ROOT / "config" / "model_selection.yaml"
+    if not p.exists():
+        return PipelineConfig(), "defaults (experiments not run yet)"
+    sel = (yaml.safe_load(p.read_text()) or {}).get("models", {}).get(f"{region}_{variable}")
+    if not sel:
+        return PipelineConfig(), f"defaults (no entry for {region}_{variable} in {p.name})"
+    keys = ("qm", "half_life", "p", "scope", "gate", "temperature", "extremes", "uncertainty")
+    return PipelineConfig(
+        **{k: sel[k] for k in keys if k in sel}
+    ), f"{p.name} ({sel.get('verdicts')})"

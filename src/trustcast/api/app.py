@@ -637,3 +637,30 @@ def meta_regions():
             "districts": json.loads(geo.read_text(encoding="utf-8")) if geo.exists() else None,
         }
     return {"disclaimer": DISCLAIMER, "regions": out}
+
+
+@app.get("/v1/district/{district_id}")
+def district(district_id: str, variable: S.Variable = "precip", init: str | None = None):
+    """Full district payload (all lead days): values, intervals, probabilities, weights, reasons."""
+    region, stem, payload, d = find_district(district_id, variable, init)
+    return {
+        "disclaimer": DISCLAIMER,
+        "region": region,
+        "variable": variable,
+        "units": payload["units"],
+        "init_time": payload["init_time"],
+        "meta": payload.get("meta", {}),
+        "district": d,
+        "product": stem,
+    }
+
+
+@app.get("/v1/products")
+def products_index():
+    """Available product inits per region/variable (newest first)."""
+    out = {}
+    for region in cfg().regions:
+        for var in ("precip", "tmax"):
+            folder = root() / "products" / region / var
+            out[f"{region}/{var}"] = sorted((p.stem for p in folder.glob("*.nc")), reverse=True)
+    return {"disclaimer": DISCLAIMER, "products": out}

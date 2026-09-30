@@ -189,3 +189,11 @@ def test_override_roundtrip(client):
     assert "orographic enhancement missed" in bl["text"] and bl["validated"]
     assert c.post("/v1/feedback/override", json={**body, "reason": "no"}).status_code == 422
     assert np.isfinite(r.json()["stored"]["value"])
+
+
+def test_district_and_products_index(client):
+    c, last = client
+    d = c.get("/v1/district/kerala-testdistrict").json()
+    assert d["district"]["district"] == "Testdistrict" and len(d["district"]["leads"]) == 2
+    idx = c.get("/v1/products").json()["products"]["rain_pilot/precip"]
+    assert idx[0] == f"{last:%Y%m%d}" and len(idx) == 2

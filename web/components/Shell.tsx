@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Disclaimer } from "@/components/ui";
 
 const NAV = [
@@ -13,17 +13,16 @@ const NAV = [
   { href: "/sources", label: "Sources" },
 ];
 
+function subscribeTheme(cb: () => void) {
+  window.addEventListener("themechange", cb);
+  return () => window.removeEventListener("themechange", cb);
+}
+
 function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark" | null>(null);
-  useEffect(() => {
-    const saved = (typeof localStorage !== "undefined" && localStorage.getItem("theme")) as "light" | "dark" | null;
-    const t = saved ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    setTheme(t);
-    document.documentElement.dataset.theme = t;
-  }, []);
+  // the theme lives on <html data-theme>, set before hydration by the inline script in layout.tsx
+  const theme = useSyncExternalStore(subscribeTheme, () => document.documentElement.dataset.theme ?? "light", () => "light");
   const toggle = () => {
     const t = theme === "dark" ? "light" : "dark";
-    setTheme(t);
     document.documentElement.dataset.theme = t;
     try {
       localStorage.setItem("theme", t);

@@ -1,69 +1,147 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import MapView, { Legend } from "@/components/MapView";
+import { Card, Empty, ErrorBox, Loading, Pill, fmt } from "@/components/ui";
+import { GridLayer, REGIONS, Region, Variable, label, useApi } from "@/lib/api";
+import { stopsFor } from "@/lib/colors";
+
+interface Alerts {
+  init_time: string;
+  rule: string;
+  alerts: { district_id: string; district: string; state: string; lead_day: number; valid_day: string; level: string; probability: number | null; value: number | null; defer: boolean; coverage: number }[];
+}
+
+function layerLabel(l: string): string {
+  if (l === "final") return "TRUSTCAST blend";
+  if (l === "consensus") return "Equal-weight consensus";
+  if (l === "disagreement") return "Model disagreement (std)";
+  if (l === "lo90") return "90 % range: lower";
+  if (l === "hi90") return "90 % range: upper";
+  if (l === "defer") return "Low-confidence flag";
+  if (l.startsWith("prob_ge_")) return `P(≥ ${l.replace("prob_ge_", "")})`;
+  if (l.startsWith("source:")) return `Model: ${label(l.slice(7))}`;
+  return l;
+}
+
+const LEVEL_TONE: Record<string, "bad" | "warn" | "neutral"> = { red: "bad", orange: "warn", yellow: "warn" };
 
 export default function Home() {
+  const router = useRouter();
+  const [region, setRegion] = useState<Region>("rain_pilot");
+  const [variable, setVariable] = useState<Variable>("precip");
+  const [lead, setLead] = useState(1);
+  const [layer, setLayer] = useState("final");
+  const [init, setInit] = useState<string>("");
+
+  const products = useApi<{ products: Record<string, string[]> }>("/v1/products");
+  const inits = products.data?.products[`${region}/${variable}`] ?? [];
+  const q = `region=${region}&variable=${variable}&lead_day=${lead}&layer=${encodeURIComponent(layer)}${init ? `&init=${init}` : ""}`;
+  const grid = useApi<GridLayer>(`/v1/forecast/grid?${q}`);
+  const meta = useApi<{ regions: Record<string, { districts: GeoJSON.FeatureCollection | null }> }>("/v1/meta/regions");
+  const alerts = useApi<Alerts>(`/v1/alerts/district?region=${region}&variable=${variable}${init ? `&init=${init}` : ""}`);
+
+  const cells = useMemo(() => {
+    const g = grid.data;
+    if (!g) return [];
+    const out: { lat: number; lon: number; v: number | null }[] = [];
+    g.lats.forEach((la, i) => g.lons.forEach((lo, j) => out.push({ lat: la, lon: lo, v: g.values[i][j] })));
+    return out;
+  }, [grid.data]);
+  const stops = stopsFor(layer, variable);
+  const units = grid.data?.units ?? "";
+
+  const pickRegion = (r: Region) => {
+    setRegion(r);
+    setVariable(REGIONS.find((x) => x.id === r)!.variable);
+    setLayer("final");
+    setInit("");
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="space-y-3">
+        <Card>
+          <div className="flex flex-wrap items-end gap-3 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--muted)]">Region</span>
+              <select className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1" value={region} onChange={(e) => pickRegion(e.target.value as Region)}>
+                {REGIONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--muted)]">Variable</span>
+              <select className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1" value={variable} onChange={(e) => { setVariable(e.target.value as Variable); setLayer("final"); }}>
+                <option value="precip">24 h rainfall (IMD day)</option>
+                <option value="tmax">Maximum temperature</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--muted)]">Layer</span>
+              <select className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1" value={layer} onChange={(e) => setLayer(e.target.value)}>
+                {(grid.data?.available_layers ?? ["final"]).map((l) => <option key={l} value={l}>{layerLabel(l)}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--muted)]">Run (00 UTC)</span>
+              <select className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1" value={init} onChange={(e) => setInit(e.target.value)}>
+                <option value="">latest</option>
+                {inits.map((s) => <option key={s} value={s}>{`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}`}</option>)}
+              </select>
+            </label>
+            <label className="flex min-w-48 flex-1 flex-col gap-1">
+              <span className="text-xs text-[var(--muted)]">Lead day {lead}{grid.data ? ` · ${variable === "precip" ? "IMD day ending 08:30 IST" : "day of maximum"} ${grid.data.valid_day}` : ""}</span>
+              <input type="range" min={1} max={5} value={lead} onChange={(e) => setLead(Number(e.target.value))} aria-label="Lead day" />
+            </label>
+          </div>
+        </Card>
+        {grid.error ? (
+          <ErrorBox error={grid.error} onRetry={grid.reload} />
+        ) : (
+          <div className="relative">
+            {grid.loading && <div className="absolute left-3 top-3 z-10 rounded bg-[var(--surface)]/90"><Loading what="forecast grid" /></div>}
+            <MapView
+              cells={cells}
+              stops={stops}
+              districts={meta.data?.regions[region]?.districts ?? null}
+              onDistrictClick={(id) => router.push(`/district/${id}?variable=${variable}${init ? `&init=${init}` : ""}`)}
+              formatValue={(v) => (units === "probability" ? `${Math.round(v * 100)} %` : `${fmt(v)} ${units}`)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Legend stops={stops} units={units === "probability" ? "probability" : units} />
+          {grid.data && <span className="text-xs text-[var(--muted)]">Run {grid.data.init_time.slice(0, 10)} 00 UTC · click a district for its card</span>}
         </div>
-      </main>
+      </div>
+      <Card title="District alerts" right={alerts.data && <span className="text-xs text-[var(--muted)]">{alerts.data.alerts.length}</span>}>
+        {alerts.loading && <Loading what="alerts" />}
+        {alerts.error && <ErrorBox error={alerts.error} onRetry={alerts.reload} />}
+        {alerts.data && alerts.data.alerts.length === 0 && <Empty>No district above yellow level for this run.</Empty>}
+        {alerts.data && alerts.data.alerts.length > 0 && (
+          <ul className="max-h-[560px] space-y-1 overflow-auto">
+            {alerts.data.alerts
+              .sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0))
+              .map((a) => (
+                <li key={`${a.district_id}-${a.lead_day}`}>
+                  <Link href={`/district/${a.district_id}?variable=${variable}${init ? `&init=${init}` : ""}`} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--chip)]">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{a.district}</span>
+                      <span className="text-xs text-[var(--muted)]">day {a.lead_day} · {a.valid_day}{a.coverage < 0.5 ? " · partial" : ""}</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {a.defer && <Pill tone="warn">review</Pill>}
+                      <Pill tone={LEVEL_TONE[a.level] ?? "neutral"}>{a.level} {a.probability !== null ? `${Math.round(a.probability * 100)}%` : ""}</Pill>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        )}
+        {alerts.data && <p className="mt-2 text-xs text-[var(--muted)]">Rule: {alerts.data.rule}</p>}
+      </Card>
     </div>
   );
 }

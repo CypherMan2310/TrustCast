@@ -148,23 +148,21 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 /** Fetch hook with explicit loading and error state (every data call in the UI uses it). */
 export function useApi<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(!!path);
   const [nonce, setNonce] = useState(0);
+  const key = path ? `${path}#${nonce}` : null;
+  // the stored result belongs to one request key; a different key means "loading"
+  const [res, setRes] = useState<{ key: string | null; data: T | null; error: string | null }>({ key: null, data: null, error: null });
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   useEffect(() => {
-    if (!path) return;
+    if (!key || !path) return;
     let alive = true;
-    setLoading(true);
-    setError(null);
     apiGet<T>(path)
-      .then((d) => alive && setData(d))
-      .catch((e: Error) => alive && setError(e.message))
-      .finally(() => alive && setLoading(false));
+      .then((d) => alive && setRes({ key, data: d, error: null }))
+      .catch((e: Error) => alive && setRes({ key, data: null, error: e.message }));
     return () => {
       alive = false;
     };
-  }, [path, nonce]);
-  return { data, error, loading, reload };
+  }, [key, path]);
+  const current = res.key === key;
+  return { data: current ? res.data : null, error: current ? res.error : null, loading: !!key && !current, reload };
 }

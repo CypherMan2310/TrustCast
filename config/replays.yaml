@@ -1,0 +1,24 @@
+# Replay events (Phase 7). Focus day and district are chosen from the IMD observations inside the
+# search window (largest observed district value), so the choice is data-driven and reproducible.
+events:
+  wayanad_2024:
+    title: "Wayanad landslides (Jul 2024)"
+    region: rain_pilot
+    variable: precip
+    district_id: kerala-wayanad        # fixed district (the disaster location)
+    search: ["2024-07-28", "2024-07-31"]
+    window_days: 5
+  vidarbha_heat_2024:
+    title: "2024 heatwave, Vidarbha"
+    region: heat_pilot
+    variable: tmax
+    district_id: null                  # the hottest district in the window
+    search: ["2024-05-15", "2024-06-05"]
+    window_days: 7
+  fengal_remnants_2024:
+    title: "Cyclone Fengal remnants over the rain pilot (Dec 2024)"
+    region: rain_pilot
+    variable: precip
+    district_id: null                  # the wettest district in the window
+    search: ["2024-11-30", "2024-12-05"]
+    window_days: 5
