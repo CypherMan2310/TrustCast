@@ -95,3 +95,11 @@ adapters:
 previous_runs:
   url: "https://previous-runs-api.open-meteo.com/v1/forecast"
   land_only: true                    # request only IMD land cells (sea cells are never verified)
+
+# Phase 8 frozen test (run ONCE with scripts/run_final_test.py)
+frozen_test:
+  start: "2026-01-01"
+  end: "2026-09-30"
+  # IFS Cycle 50r1 + AIFS Single/ENS v2 went operational with the 06 UTC run of 12 May 2026
+  # (ECMWF news 2026-05-12; ECMWF forum confirmation 2026-05-06). First 00Z init after: 2026-05-13.
+  ecmwf_change: "2026-05-13"
