@@ -156,9 +156,9 @@ def build_climatology(
     return ds
 
 
-def clim_for(clim: xr.Dataset, var: str, like: xr.DataArray) -> xr.DataArray:
-    """Climatology field ``var`` arranged like a forecast via its ``valid_day``."""
-    vd = pd.DatetimeIndex(like["valid_day"].values.ravel())
+def clim_for(clim: xr.Dataset, var: str, like: xr.DataArray, offset_days: int = 0) -> xr.DataArray:
+    """Climatology field ``var`` arranged like a forecast via its ``valid_day`` (+ offset days)."""
+    vd = pd.DatetimeIndex(like["valid_day"].values.ravel()) + pd.Timedelta(days=offset_days)
     doy = np.minimum(vd.dayofyear.to_numpy(), 365)
     arr = clim[var].values[doy - 1].reshape(like["valid_day"].shape + clim[var].shape[1:])
     return xr.DataArray(

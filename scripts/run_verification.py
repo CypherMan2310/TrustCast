@@ -32,18 +32,10 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from trustcast import DISCLAIMER
-from trustcast.blend.baselines import (
-    build_climatology,
-    clim_for,
-    equal_mean,
-    persistence,
-    superensemble,
-)
 from trustcast.config import data_root, load_config
-from trustcast.verify.data import VAR_PAIRS, load_canonical, load_truth, obs_like
+from trustcast.verify.assemble import assemble, baselines
 from trustcast.verify.scoreboard import (
     THRESHOLDS,
-    Forecast,
     reliability,
     scoreboard,
     write_skill_table,
@@ -80,90 +72,6 @@ def pick_forecasts(allf, obs, start, exclude):
 
 
 OUT = REPO / "reports" / "phase2"
-
-
-def _valid_day(inits: pd.DatetimeIndex, lead_h: np.ndarray) -> np.ndarray:
-    return (
-        inits.values[:, None] + (lead_h.astype("timedelta64[h]") - np.timedelta64(3, "h"))[None, :]
-    )
-
-
-def assemble(cfg, root, region: str, variable: str):
-    """Sources on a common init axis + truth arranged like them."""
-    fc_var, truth_var = VAR_PAIRS[variable]
-    raw = {}
-    for name, a in cfg.adapters.items():
-        if a.use != "eval" or a.type == "ncum" or not a.enabled:
-            continue
-        ds = load_canonical(root, name, region)
-        if ds is not None and ds.sizes["init_time"]:
-            raw[a.source] = ds[fc_var]
-    if not raw:
-        return None, None, None
-    inits = pd.DatetimeIndex(
-        sorted(set().union(*[set(pd.DatetimeIndex(d.init_time.values)) for d in raw.values()]))
-    )
-    lead_h = next(iter(raw.values())).lead_h.values
-    vd = _valid_day(inits, lead_h)
-    coverage, forecasts = [], []
-    for src, da in raw.items():
-        da = (
-            da.reindex(init_time=inits)
-            .assign_coords(valid_day=(("init_time", "lead_h"), vd))
-            .load()
-        )
-        ens = da if "member" in da.dims else None
-        det = da.mean("member") if ens is not None else da
-        forecasts.append(Forecast(src, "source", det, ens))
-        have = pd.DatetimeIndex(da.init_time.values)[np.isfinite(det.values).any(axis=(1, 2, 3))]
-        coverage.append(
-            {
-                "region": region,
-                "variable": variable,
-                "forecast": src,
-                "first_init": have.min() if len(have) else None,
-                "last_init": have.max() if len(have) else None,
-                "n_inits": len(have),
-                "members": int(da.sizes.get("member", 1)),
-            }
-        )
-    truth = load_truth(root, region)[truth_var]
-    grid = forecasts[0].det
-    obs = obs_like(grid.to_dataset(name="x"), truth.sel(lat=grid.lat, lon=grid.lon)).assign_coords(
-        valid_day=(("init_time", "lead_h"), vd)
-    )
-    return forecasts, obs, (truth, coverage)
-
-
-def add_baselines(cfg, root, region, variable, forecasts, obs, truth):
-    dets = {f.name: f.det for f in forecasts}
-    like = forecasts[0].det
-    out = [
-        Forecast("equal_mean", "baseline", equal_mean(dets).assign_coords(valid_day=like.valid_day))
-    ]
-    out.append(Forecast("superensemble", "baseline", superensemble(dets, obs)))
-    out.append(
-        Forecast(
-            "persistence",
-            "baseline",
-            persistence(truth.sel(lat=like.lat, lon=like.lon), like).assign_coords(
-                valid_day=like.valid_day
-            ),
-        )
-    )
-    clim_var = "rain" if variable == "precip" else "tmax"
-    clim = build_climatology(root, clim_var, cfg.regions[region], THRESHOLDS[variable])
-    ref_prob = None
-    if clim is not None:
-        out.append(
-            Forecast(
-                "climatology",
-                "baseline",
-                clim_for(clim, "mean", like).assign_coords(valid_day=like.valid_day),
-            )
-        )
-        ref_prob = {t: clim_for(clim, f"p_ge_{t}", like) for t in THRESHOLDS[variable]}
-    return out, ref_prob, clim is not None
 
 
 def fig_by_lead(sb: pd.DataFrame, metric: str, path: Path, title: str) -> None:
@@ -319,17 +227,15 @@ def main() -> int:
     boards, rels, covs, figs, clim_ok, excluded = [], [], [], [], {}, {}
     for region in args.regions or list(cfg.regions):
         for variable in ("precip", "tmax"):
-            forecasts, obs, extra = assemble(cfg, root, region, variable)
-            if forecasts is None:
+            bundle = assemble(cfg, root, region, variable)
+            if bundle is None:
                 print(f"{region} {variable}: no canonical data yet")
                 continue
-            truth, coverage = extra
-            covs += coverage
-            baselines, ref_prob, has_clim = add_baselines(
-                cfg, root, region, variable, forecasts, obs, truth
-            )
-            clim_ok[f"{region}/{variable}"] = has_clim
-            allf = forecasts + baselines
+            covs += bundle.coverage
+            forecasts, obs = bundle.forecasts, bundle.obs
+            base, ref_prob = baselines(cfg, root, bundle)
+            clim_ok[f"{region}/{variable}"] = ref_prob is not None
+            allf = forecasts + base
             sb = None
             for sname, spec in SAMPLES.items():
                 kept, dropped = pick_forecasts(allf, obs, spec["start"], spec["exclude"])

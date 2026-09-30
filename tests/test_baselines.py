@@ -137,3 +137,18 @@ def test_climatology_needs_full_normal_and_is_correct(tmp_path, cfg):
     )
     c = clim_for(clim, "mean", like)
     assert c.shape == like.shape and np.isfinite(c.values).all()
+
+
+def test_tmax_pairs_with_previous_imd_day():
+    """IMD Tmax of day D is D's daytime maximum -> it pairs with the window labelled D + 1."""
+    t = pd.date_range("2024-01-01", periods=300)
+    truth = xr.DataArray(
+        np.arange(300, dtype=float)[:, None, None] * np.ones((1, 2, 1)),
+        dims=("time", "lat", "lon"),
+        coords={"time": t, "lat": [10.0, 10.25], "lon": [76.0]},
+    )
+    fc = _fc(np.zeros((INITS.size, 2, 2, 1))).to_dataset(name="tmax_c")
+    rain = obs_like(fc, truth, 0)
+    tmax = obs_like(fc, truth, -1)
+    assert rain.values[0, 0, 0, 0] == 1.0  # window labelled Jan 2 -> IMD rain of Jan 2
+    assert tmax.values[0, 0, 0, 0] == 0.0  # window labelled Jan 2 -> IMD Tmax of Jan 1

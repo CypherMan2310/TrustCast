@@ -14,6 +14,12 @@ import xarray as xr
 
 TEST_START = pd.Timestamp("2026-01-01")
 VAR_PAIRS = {"precip": ("precip_24h_mm", "rain_mm"), "tmax": ("tmax_c", "tmax_c")}
+# IMD day of the observation paired with a forecast window whose label (valid_day) is L:
+# rain: L (24 h ending 03 UTC on L). Tmax: L - 1, because IMD Tmax of day D is D's daytime maximum,
+# which lies in the window (D 03Z, D+1 03Z] labelled D+1. Verified on real data 2026-09-30:
+# day-to-day changes of forecast Tmax correlate with IMD Tmax at shift -1 (r 0.31-0.64),
+# ~0 at shift 0.
+TRUTH_DAY_OFFSET = {"precip": 0, "tmax": -1}
 
 
 def _monthly(folder: Path) -> list[Path]:
@@ -47,10 +53,13 @@ def load_truth(root: Path, region: str, allow_test: bool = False) -> xr.Dataset:
     return ds.load()
 
 
-def obs_like(fc: xr.Dataset, truth: xr.DataArray) -> xr.DataArray:
-    """Observations arranged like the forecast: (init_time, lead_h, lat, lon) via ``valid_day``."""
+def obs_like(fc: xr.Dataset, truth: xr.DataArray, offset_days: int = 0) -> xr.DataArray:
+    """Observations arranged like the forecast: (init_time, lead_h, lat, lon) via ``valid_day``.
+
+    ``offset_days``: IMD day of the observation relative to the window label (see TRUTH_DAY_OFFSET).
+    """
     vd = fc["valid_day"].values
-    t = truth.reindex(time=pd.DatetimeIndex(vd.ravel()))
+    t = truth.reindex(time=pd.DatetimeIndex(vd.ravel()) + pd.Timedelta(days=offset_days))
     arr = t.values.reshape(vd.shape + t.shape[1:])
     return xr.DataArray(
         arr,

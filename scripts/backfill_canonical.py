@@ -44,9 +44,17 @@ QUOTA_SLEEP_S = 1200
 DYN_WORKERS = 2  # measured: no speed-up beyond this (GEFS reads are bandwidth-bound)
 
 
-def month_inits(month: pd.Period, lead_days: int) -> list[pd.Timestamp]:
-    """00Z inits of ``month`` whose last lead window ends on or before the dev period end."""
+def month_inits(month: pd.Period, lead_days: int, collect_test: bool = False) -> list[pd.Timestamp]:
+    """00Z inits of ``month``.
+
+    Default (development): only inits whose last lead window ends by the dev period end.
+    ``collect_test``: every init up to today (data *collection* for the frozen test and live
+    operation; evaluation scripts still refuse the test period).
+    """
     days = pd.date_range(month.start_time, month.end_time.normalize(), freq="D")
+    if collect_test:
+        today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+        return [d for d in days if d <= today]
     return [d for d in days if d + pd.Timedelta(days=lead_days) <= DEV_LAST_VALID_DAY]
 
 
@@ -116,6 +124,16 @@ def main() -> int:
     ap.add_argument("--regions", nargs="+", default=None)
     ap.add_argument("--start", default="2024-01")
     ap.add_argument("--end", default="2025-12")
+    ap.add_argument(
+        "--collect-test",
+        action="store_true",
+        help="collect data in/after the frozen test period (never evaluated here)",
+    )
+    ap.add_argument(
+        "--refresh-current",
+        action="store_true",
+        help="rebuild the store of the current (incomplete) month",
+    )
     args = ap.parse_args()
 
     cfg = load_config()
@@ -143,7 +161,8 @@ def main() -> int:
     )
 
     for month in months:
-        inits = month_inits(month, lead_days)
+        inits = month_inits(month, lead_days, args.collect_test)
+        current = month == pd.Timestamp.now(tz="UTC").tz_localize(None).to_period("M")
         if not inits:
             continue
         for region_name in regions:
@@ -157,7 +176,7 @@ def main() -> int:
                     / region_name
                     / f"{month.strftime('%Y%m')}.zarr"
                 )
-                if out.exists():
+                if out.exists() and not (args.refresh_current and current):
                     continue
                 t0 = time.monotonic()
                 try:
