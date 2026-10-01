@@ -65,6 +65,7 @@ def produce(cfg, root, region: str, variable: str, n_inits: int) -> str:
         "gate": pc.gate,
         "config": pc.__dict__ | {"learn_start": str(pc.learn_start)},
         "config_provenance": provenance,
+        "probability_method": res.prob_method if res.probs else None,
         "sources_available": avail,
         "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "truth_note": "skill tracker uses IMD where available, else IMERG (provisional)",
