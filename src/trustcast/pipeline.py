@@ -54,7 +54,8 @@ class PipelineConfig:
     gate: bool = True
     temperature: float = 0.3
     regime_features: bool = True
-    extremes: bool = True
+    tail_map: bool = True  # L5a: tail-preserving quantile mapping of the blended value
+    extremes: bool = True  # L5b: calibrated event classifiers
     uncertainty: bool = True
     exclude_sources: tuple[str, ...] = ()
     learn_start: pd.Timestamp = field(default_factory=lambda: pd.Timestamp("2024-10-01"))
@@ -82,6 +83,7 @@ class PipelineResult:
     gate: GatePredictions | None = None
     blend_b: xr.DataArray | None = None
     probs: dict[float, xr.DataArray] = field(default_factory=dict)
+    prob_method: str = "classifier"
     quantiles: dict[float, xr.DataArray] = field(default_factory=dict)
     lo: xr.DataArray | None = None
     hi: xr.DataArray | None = None
@@ -167,8 +169,9 @@ def run_pipeline(
         like.transpose(*ORDER).init_time.values[:, None, None, None], grid.shape
     ).ravel()
     res.defer = _grid_da(defer_flags(pred_err, spread, init_flat), like).astype(bool)
-    if cfg.extremes:
+    if cfg.tail_map:
         res.final_det = rolling_qm(res.final_det, obs, kind).where(land)
+    if cfg.extremes:
         feats = case_table(grid, dets, res.final_det, members, THRESHOLDS[b.variable])
         probs = exceedance_probabilities(
             feats,
@@ -180,6 +183,13 @@ def run_pipeline(
             cfg.min_train_rows,
         )
         res.probs = {t: _grid_da(p, like).where(land) for t, p in probs.items()}
+    elif members:
+        # classifiers disabled: raw ensemble exceedance fraction, averaged over ensemble sources
+        res.probs = {}
+        for t in THRESHOLDS[b.variable]:
+            fr = [((m >= t).where(np.isfinite(m))).mean("member") for m in members.values()]
+            res.probs[t] = xr.concat(fr, dim="e").mean("e", skipna=True).transpose(*ORDER)
+        res.prob_method = "ensemble_fraction"
     if cfg.uncertainty:
         feats = case_table(grid, dets, res.final_det, members, THRESHOLDS[b.variable])
         y = obs.transpose(*ORDER).values.ravel()
@@ -229,6 +239,7 @@ def config_from_selection(region: str, variable: str, path=None) -> tuple[Pipeli
         "scope",
         "gate",
         "temperature",
+        "tail_map",
         "extremes",
         "uncertainty",
     )

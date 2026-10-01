@@ -93,5 +93,9 @@ def test_pipeline_ablation_switches():
             qm=False, gate=False, extremes=False, uncertainty=False, exclude_sources=("bad",)
         ),
     )
-    assert lean.gate is None and not lean.probs and lean.lo is None
+    assert lean.gate is None and lean.lo is None
+    # classifiers off: probabilities fall back to the raw ensemble exceedance fraction
+    assert lean.prob_method == "ensemble_fraction" and set(lean.probs) == {64.5, 115.6}
+    p = lean.probs[64.5].values
+    assert np.nanmin(p) >= 0 and np.nanmax(p) <= 1
     assert list(lean.weights.source.values) == ["good", "ens"]

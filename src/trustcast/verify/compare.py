@@ -104,6 +104,80 @@ def _flat(da: xr.DataArray) -> np.ndarray:
     return da.transpose(*ORDER).values.ravel()
 
 
+def _ets(s: dict) -> np.ndarray:
+    a, b, c, n = (np.asarray(s[k], dtype=float) for k in ("hit", "fa", "miss", "n"))
+    with np.errstate(all="ignore"):
+        ar = (a + b) * (a + c) / n
+        return (a - ar) / (a + b + c - ar)
+
+
+def event_verdict(
+    cand: xr.DataArray,
+    ref: xr.DataArray,
+    obs: xr.DataArray,
+    t: float,
+    mask: xr.DataArray,
+    n_boot: int = 1000,
+) -> dict:
+    """Event gate for the extreme layer (its purpose is event skill, not RMSE): ETS(cand) - ETS(ref)
+    at threshold ``t`` per lead day, paired block bootstrap on common cases. Ships if ETS is
+    significantly higher at >= MIN_BETTER_LEADS leads and significantly lower at none."""
+    rows = []
+    for li in range(cand.sizes["lead_h"]):
+        sel = {"lead_h": li}
+        a, r, o = (
+            x.isel(sel).transpose("init_time", "lat", "lon").values.ravel()
+            for x in (cand, ref, obs)
+        )
+        m = np.broadcast_to(
+            mask.isel(sel).values[:, None, None],
+            cand.isel(sel).transpose("init_time", "lat", "lon").shape,
+        ).ravel()
+        ok = np.isfinite(a) & np.isfinite(r) & np.isfinite(o) & m
+        days = np.broadcast_to(
+            cand.isel(sel)["valid_day"].values[:, None, None],
+            cand.isel(sel).transpose("init_time", "lat", "lon").shape,
+        ).ravel()[ok]
+        ev = o[ok] >= t
+        ids = block_ids(days)
+
+        def stats(f, ev=ev, ids=ids, ok=ok):
+            fe = f[ok] >= t
+            return aggregate_blocks(
+                ids,
+                {
+                    "hit": (fe & ev).astype(float),
+                    "fa": (fe & ~ev).astype(float),
+                    "miss": (~fe & ev).astype(float),
+                    "n": np.ones(ev.size),
+                },
+            )[1]
+
+        res = paired_block_bootstrap(stats(a), stats(r), _ets, n_boot)
+        rows.append(
+            {
+                "lead_day": li + 1,
+                "n_events": int(ev.sum()),
+                "ets_cand": res.score_a,
+                "ets_ref": res.score_b,
+                "d_ets": res.diff,
+                "ci_low": res.ci_low,
+                "ci_high": res.ci_high,
+            }
+        )
+    df = pd.DataFrame(rows)
+    better = int((df.ci_low > 0).sum())
+    worse = int((df.ci_high < 0).sum())
+    return {
+        "threshold": t,
+        "leads_significantly_better": better,
+        "leads_significantly_worse": worse,
+        "mean_d_ets": float(df.d_ets.mean()),
+        "passes": bool(better >= MIN_BETTER_LEADS and worse == 0),
+        "table": df,
+    }
+
+
 def brier_compare(
     p_a: xr.DataArray,
     p_b: xr.DataArray,

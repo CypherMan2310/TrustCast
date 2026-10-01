@@ -53,6 +53,7 @@ from trustcast.verify.compare import (
     brier_compare,
     coverage_by_lead,
     defer_stats,
+    event_verdict,
     pick_forecasts,
     pooled_rmse,
     reliability_rows,
@@ -211,6 +212,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
         p=p_ship,
         scope=best["scope"],
         gate=True,
+        tail_map=False,
         extremes=False,
         uncertainty=False,
     )
@@ -243,24 +245,17 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
     log(f"{region} {variable} B vs {f_ship.name}: {v_b}")
 
     # ------------------------------------------------------------------ Phase 5
-    full_cfg = pc.but(gate=v_b["passes"], temperature=T_best, extremes=True, uncertainty=True)
+    full_cfg = pc.but(
+        gate=v_b["passes"], temperature=T_best, tail_map=True, extremes=True, uncertainty=True
+    )
     full = run_pipeline(b, full_cfg, clim, static)
     layer_prev = fb if v_b["passes"] else f_ship
-    ff = Forecast("trustcast", "final", full.final_det)
-    sb5 = holdout_board(
-        [ff, layer_prev, Forecast("equal_mean", "baseline", eq_raw)]
-        + [f for f in base if f.name in ("superensemble", "climatology")],
-        b,
-        layer_prev.name,
-        ref_prob,
-        n_boot,
-        "phase5",
-        regimes=full.regimes,
+    # L5a gate: the tail mapping is judged on its purpose, event skill (ETS at the first threshold)
+    v_tail = event_verdict(full.final_det, layer_prev.det, obs, thr[0], hold_m, n_boot)
+    log(
+        f"{region} {variable} L5a tail map vs {layer_prev.name}: "
+        f"{ {k: v for k, v in v_tail.items() if k != 'table'} }"
     )
-    ev_rows = overall(sb5)[
-        ["forecast", "lead_day", "n_cases", "rmse", "rmse_lo", "rmse_hi"]
-        + [c for c in sb5.columns if c.startswith(("ets_", "pod_", "far_", "fbias_", "n_obs_ev_"))]
-    ]
     brier_rows, rel = [], []
     for t in thr:
         ens_p = ensemble_fraction(b, land, t)
@@ -289,6 +284,39 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
                     "significant": r.significant,
                 }
             )
+    # L5b gate: classifier Brier at the first threshold significantly lower than the strongest
+    # alternative (ensemble fraction if an ensemble exists, else climatology), higher than none
+    first = [r for r in brier_rows if r["threshold"] == thr[0]]
+    main_alt = (
+        "ensemble_fraction" if any(r["vs"] == "ensemble_fraction" for r in first) else "climatology"
+    )
+    v_cls = {
+        "vs": main_alt,
+        "passes": bool(
+            any(r["vs"] == main_alt and r["significant"] and r["d_brier"] < 0 for r in first)
+            and not any(r["significant"] and r["d_brier"] > 0 for r in first)
+        ),
+    }
+    log(f"{region} {variable} L5b classifiers: {v_cls}")
+    if not (v_tail["passes"] and v_cls["passes"]):
+        full_cfg = full_cfg.but(tail_map=v_tail["passes"], extremes=v_cls["passes"])
+        full = run_pipeline(b, full_cfg, clim, static)
+    out["phase5_gates"] = {"tail_map": v_tail, "classifiers": v_cls}
+    ff = Forecast("trustcast", "final", full.final_det)
+    sb5 = holdout_board(
+        [ff, layer_prev, Forecast("equal_mean", "baseline", eq_raw)]
+        + [f for f in base if f.name in ("superensemble", "climatology")],
+        b,
+        layer_prev.name,
+        ref_prob,
+        n_boot,
+        "phase5",
+        regimes=full.regimes,
+    )
+    ev_rows = overall(sb5)[
+        ["forecast", "lead_day", "n_cases", "rmse", "rmse_lo", "rmse_hi"]
+        + [c for c in sb5.columns if c.startswith(("ets_", "pod_", "far_", "fbias_", "n_obs_ev_"))]
+    ]
     cov = coverage_by_lead(full.lo, full.hi, obs, hold_m)
     dfr = defer_stats(full.final_det, obs, full.defer, hold_m)
     out["phase5"] = {
@@ -305,7 +333,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
             "no_AI_sources": full_cfg.but(exclude_sources=AI_SOURCES),
             "no_bias_correction": full_cfg.but(qm=False, cell_bias=False),
             "no_gate (A only)": full_cfg.but(gate=False),
-            "no_extreme_layer": full_cfg.but(extremes=False),
+            "no_extreme_layer": full_cfg.but(tail_map=False, extremes=False),
             "no_regime_features": full_cfg.but(regime_features=False),
         }
         for vname, vcfg in variants.items():
@@ -461,6 +489,7 @@ def write_reports(results):
             "",
         ]
         p5 = out["phase5"]
+        g5 = out["phase5_gates"]
         md5 += [
             f"## {region} · {var}",
             "",
@@ -475,6 +504,17 @@ def write_reports(results):
             "### Calibrated 90 % intervals (CQR), holdout coverage",
             "",
             md_table(tb["coverage"]),
+            "",
+            "### L5 gates (event skill, holdout)",
+            "",
+            f"L5a tail mapping: ETS at {g5['tail_map']['threshold']} vs the previous shipped layer, "
+            f"passes = {g5['tail_map']['passes']} (>= 3 leads significantly higher, none lower).",
+            "",
+            md_table(g5["tail_map"]["table"]),
+            "",
+            f"L5b classifiers vs {g5['classifiers']['vs']}: passes = {g5['classifiers']['passes']}"
+            " (Brier at the first threshold significantly lower, never significantly higher). If"
+            " disabled, probabilities are the raw ensemble exceedance fraction.",
             "",
             f"### Defer flag: {p5['defer']}",
             "",
@@ -491,12 +531,15 @@ def write_reports(results):
             "scope": full_cfg.scope,
             "gate": full_cfg.gate,
             "temperature": full_cfg.temperature,
+            "tail_map": full_cfg.tail_map,
             "extremes": full_cfg.extremes,
             "uncertainty": full_cfg.uncertainty,
             "verdicts": {
                 "L1": out["phase3"]["L1"]["passes"],
                 "A": out["phase3"]["A_vs_prev"]["passes"],
                 "B": out["phase4"]["B_vs_prev"]["passes"],
+                "L5a_tail_map": out["phase5_gates"]["tail_map"]["passes"],
+                "L5b_classifiers": out["phase5_gates"]["classifiers"]["passes"],
             },
             "sources": out["sources"],
             "runtime_s": out["runtime_s"],
