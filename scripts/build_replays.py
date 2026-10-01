@@ -31,7 +31,7 @@ from trustcast.config import data_root, load_config
 from trustcast.grid.districts import district_means, district_table
 from trustcast.grid.static import static_features
 from trustcast.pipeline import config_from_selection, run_pipeline
-from trustcast.verify.assemble import assemble, climatology
+from trustcast.verify.assemble import assemble, climatology, frozen_sources
 from trustcast.verify.data import TRUTH_DAY_OFFSET
 
 MIN_CELLS = 3
@@ -56,7 +56,13 @@ def _series(
 
 
 def build(cfg, root, event_id: str, ev: dict) -> Path:
-    b = assemble(cfg, root, ev["region"], ev["variable"])
+    b = assemble(
+        cfg,
+        root,
+        ev["region"],
+        ev["variable"],
+        sources=frozen_sources(ev["region"], ev["variable"]),
+    )
     table, _ = district_table(cfg, root, ev["region"])
     off = TRUTH_DAY_OFFSET[ev["variable"]]
     s0, s1 = pd.Timestamp(ev["search"][0]), pd.Timestamp(ev["search"][1])

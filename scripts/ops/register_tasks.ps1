@@ -2,11 +2,11 @@
 # Re-run to update; remove with scripts\ops\unregister_tasks.ps1. Times are local (IST).
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path "$PSScriptRoot\..\..").Path
-$runner = Join-Path $repo "scripts\ops\run_job.cmd"
+$runner = Join-Path $repo "scripts\ops\run_hidden.vbs"  # runs run_job.cmd with no console window
 $path = "\TRUSTCAST\"
 
 function Register-Job($name, $triggers, $limitHours) {
-    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$runner`" $name" -WorkingDirectory $repo
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$runner`" $name" -WorkingDirectory $repo
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -ExecutionTimeLimit (New-TimeSpan -Hours $limitHours)

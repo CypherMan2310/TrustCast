@@ -41,7 +41,14 @@ from trustcast.config import data_root, load_config
 from trustcast.grid.static import static_features
 from trustcast.pipeline import AI_SOURCES, PipelineConfig, run_pipeline
 from trustcast.skill.tracker import decayed_mse
-from trustcast.verify.assemble import assemble, baselines, climatology
+from trustcast.verify.assemble import (
+    MIN_SOURCE_COVERAGE,
+    MIN_SOURCE_DAYS,
+    assemble,
+    baselines,
+    climatology,
+    source_coverage,
+)
 from trustcast.verify.compare import (
     brier_compare,
     coverage_by_lead,
@@ -73,6 +80,8 @@ def md_table(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
 
 
 DROPPED: dict[str, dict] = {}
+SOURCE_TABLES: dict[str, list[dict]] = {}
+LOCK = REPO / "reports" / "phase8" / "FINAL_LOCK.json"
 
 
 def holdout_board(fcs, b, ref, ref_prob, n_boot, sample, regimes=None):
@@ -102,9 +111,9 @@ def ensemble_fraction(b, land, t):
     return xr.concat(fr, dim="e").mean("e", skipna=True)
 
 
-def run_one(cfg, root, region, variable, n_boot, do_ablations):
+def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
     t_start = time.monotonic()
-    b = assemble(cfg, root, region, variable)
+    b = assemble(cfg, root, region, variable, sources=sources)
     if b is None:
         return None
     land = np.isfinite(b.truth).any("time")
@@ -115,7 +124,7 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations):
     thr = THRESHOLDS[variable]
     tune_m = window_mask(b.like, *TUNE)
     hold_m = window_mask(b.like, *HOLDOUT)
-    out = {"region": region, "variable": variable, "coverage": b.coverage}
+    out = {"region": region, "variable": variable, "coverage": b.coverage, "sources": sources}
     obs = b.obs.where(land)
 
     # ------------------------------------------------------------------ Phase 3
@@ -484,8 +493,20 @@ def write_reports(results):
                 "A": out["phase3"]["A_vs_prev"]["passes"],
                 "B": out["phase4"]["B_vs_A"]["passes"],
             },
+            "sources": out["sources"],
             "runtime_s": out["runtime_s"],
         }
+    md3 += [
+        "",
+        "## Source set (frozen with these settings)",
+        "",
+        f"Eligible: >= {MIN_SOURCE_COVERAGE:.0%} of daily 00Z dev inits (2024-04-01..2025-12-26, from "
+        f"the source's own first init) over >= {MIN_SOURCE_DAYS} days. Sources whose dev backfill was "
+        "incomplete are left out of every layer and of the frozen test, not partially used.",
+        "",
+    ]
+    for region, rows in SOURCE_TABLES.items():
+        md3 += [f"### {region}", "", md_table(pd.DataFrame(rows)), ""]
     md3 += ["", "## Forecasts left out of holdout tables (coverage < 50 % of the best)", ""]
     md3 += [f"- {k}: {v}" for k, v in DROPPED.items() if v] or ["- none"]
     (REPORTS / "phase3" / "PHASE3.md").write_text("\n".join(md3), encoding="utf-8")
@@ -505,12 +526,19 @@ def main() -> int:
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--no-ablations", action="store_true")
     args = ap.parse_args()
+    if LOCK.exists():
+        # settings are frozen once the final test has run; re-tuning would change what was tested
+        log(f"frozen test already run ({LOCK.name}); model selection is frozen, nothing to do")
+        return 0
     cfg = load_config()
     root = data_root()
     results = {}
     for region in args.regions or list(cfg.regions):
+        SOURCE_TABLES[region] = source_coverage(cfg, root, region)
+        sources = sorted({r["source"] for r in SOURCE_TABLES[region] if r["eligible"]})
+        log(f"{region} sources: {sources}")
         for var in args.variables:
-            r = run_one(cfg, root, region, var, args.n_boot, not args.no_ablations)
+            r = run_one(cfg, root, region, var, args.n_boot, not args.no_ablations, sources)
             if r is None:
                 log(f"{region} {var}: no data")
                 continue

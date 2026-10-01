@@ -30,11 +30,13 @@ from trustcast.log import setup_logging
 from trustcast.pipeline import config_from_selection, run_pipeline
 from trustcast.products import write_products
 from trustcast.skill.overrides import connect, load_overrides, penalty_factors
-from trustcast.verify.assemble import assemble, climatology
+from trustcast.verify.assemble import assemble, climatology, frozen_sources
 
 
 def produce(cfg, root, region: str, variable: str, n_inits: int) -> str:
-    b = assemble(cfg, root, region, variable, allow_test=True)
+    b = assemble(
+        cfg, root, region, variable, allow_test=True, sources=frozen_sources(region, variable)
+    )
     if b is None:
         return "no data"
     land = np.isfinite(b.truth).any("time")

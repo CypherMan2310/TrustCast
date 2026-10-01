@@ -115,6 +115,54 @@ def assemble(
     return Bundle(region, variable, forecasts, obs, truth, coverage)
 
 
+DEV_EVAL = ("2024-04-01", "2025-12-26")  # dev inits whose 5 lead days all fall in the dev split
+MIN_SOURCE_COVERAGE = 0.8
+MIN_SOURCE_DAYS = 150
+
+
+def source_coverage(
+    cfg: Config, root: Path, region: str, span: tuple[str, str] = DEV_EVAL
+) -> list[dict]:
+    """Per eval source: share of daily 00Z inits present in ``span``, counted from the later of the
+    span start and the source's own first init (so a source the provider started mid-span, such as
+    AIFS-ENS on 2025-07-02, is judged on its own period). Dev split only; test data are not read."""
+    rows = []
+    for name, a in cfg.adapters.items():
+        if a.use != "eval" or a.type == "ncum" or not a.enabled:
+            continue
+        ds = load_canonical(root, name, region)
+        have = pd.DatetimeIndex([]) if ds is None else pd.DatetimeIndex(ds.init_time.values)
+        have = have[(have >= span[0]) & (have <= span[1])]
+        start = max(pd.Timestamp(span[0]), have.min()) if len(have) else pd.Timestamp(span[0])
+        want = pd.date_range(start, span[1], freq="D")
+        frac = float(np.isin(want, have).mean()) if len(have) else 0.0
+        rows.append(
+            {
+                "adapter": name,
+                "source": a.source,
+                "first_init": str(start.date()) if len(have) else None,
+                "n_inits": len(have),
+                "coverage": round(frac, 3),
+                # and its period must be long enough to learn from (>= MIN_SOURCE_DAYS)
+                "eligible": bool(frac >= MIN_SOURCE_COVERAGE and len(want) >= MIN_SOURCE_DAYS),
+            }
+        )
+    return rows
+
+
+def frozen_sources(region: str, variable: str, path: Path | None = None) -> list[str] | None:
+    """Source set frozen in ``config/model_selection.yaml`` for region/variable (None if absent)."""
+    import yaml
+
+    from trustcast.config import REPO_ROOT
+
+    p = Path(path) if path else REPO_ROOT / "config" / "model_selection.yaml"
+    if not p.exists():
+        return None
+    sel = (yaml.safe_load(p.read_text()) or {}).get("models", {}).get(f"{region}_{variable}") or {}
+    return sel.get("sources")
+
+
 def climatology(cfg: Config, root: Path, region: str, variable: str) -> xr.Dataset | None:
     """IMD 1991-2020 day-of-year climatology for the region (cached as NetCDF)."""
     cache = root / "processed" / "climatology" / f"{region}_{variable}.nc"

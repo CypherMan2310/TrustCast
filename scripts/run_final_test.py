@@ -34,7 +34,7 @@ from trustcast.config import data_root, load_config
 from trustcast.grid.static import static_features
 from trustcast.pipeline import config_from_selection, run_pipeline
 from trustcast.truth import imd
-from trustcast.verify.assemble import assemble, baselines, climatology
+from trustcast.verify.assemble import assemble, baselines, climatology, frozen_sources
 from trustcast.verify.scoreboard import Forecast, overall, scoreboard
 
 OUT = REPO / "reports" / "phase8"
@@ -52,6 +52,10 @@ def preconditions(cfg, root, raw: dict) -> tuple[list[str], dict]:
         if a.use != "eval" or a.type == "ncum":
             continue
         for region in cfg.regions:
+            # only the sources frozen with the model settings are needed (and scored)
+            frozen = {s for v in ("precip", "tmax") for s in (frozen_sources(region, v) or [])}
+            if frozen and a.source not in frozen:
+                continue
             n = 0
             for p in (root / "processed" / "canonical" / name / region).glob("2026*.zarr"):
                 with xr.open_zarr(p, consolidated=False) as ds:
@@ -128,7 +132,9 @@ def main() -> int:
     ]
     for region in cfg.regions:
         for var in ("precip", "tmax"):
-            b = assemble(cfg, root, region, var, allow_test=True)
+            b = assemble(
+                cfg, root, region, var, allow_test=True, sources=frozen_sources(region, var)
+            )
             if b is None:
                 continue
             land = np.isfinite(b.truth).any("time")
