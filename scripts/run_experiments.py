@@ -198,13 +198,17 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
     se_rows = overall(sb3)[overall(sb3).forecast == "superensemble"]
     out["phase3"] = {"L1": v_l1, "A_params": best, "A_vs_prev": v_a}
     log(f"{region} {variable} A vs {prev_name}: {v_a}")
+    # rule 5: a layer that fails its gate is disabled. p = 0 gives equal weights over the available
+    # sources, i.e. the previous layer (equal mean of the L1 output); B then builds on that.
+    p_ship = best["p"] if v_a["passes"] else 0.0
+    f_ship = fa if v_a["passes"] else fprev
 
     # ------------------------------------------------------------------ Phase 4
     pc = PipelineConfig(
         qm=use_qm,
         cell_bias=use_cell,
         half_life=best["half_life"],
-        p=best["p"],
+        p=p_ship,
         scope=best["scope"],
         gate=True,
         extremes=False,
@@ -228,19 +232,20 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
     tgrid = pd.DataFrame(t_rows).sort_values("rmse_T_tune")
     T_best = float(tgrid.iloc[0]["temperature"])
     fb = Forecast("blend_B", "L3B", blends[T_best])
-    sb4 = holdout_board([fb, fa], b, "blend_A", ref_prob, n_boot, "phase4")
-    v_b = verdict(sb4, "blend_B", "blend_A")
+    sb4 = holdout_board([fb, f_ship], b, f_ship.name, ref_prob, n_boot, "phase4")
+    v_b = verdict(sb4, "blend_B", f_ship.name)
     out["phase4"] = {
         "temperature": T_best,
-        "B_vs_A": v_b,
+        "B_vs_prev": v_b,
+        "B_reference": f_ship.name,
         "regimes": regime_counts(res_b.regimes).to_dict(),
     }
-    log(f"{region} {variable} B vs A: {v_b}")
+    log(f"{region} {variable} B vs {f_ship.name}: {v_b}")
 
     # ------------------------------------------------------------------ Phase 5
     full_cfg = pc.but(gate=v_b["passes"], temperature=T_best, extremes=True, uncertainty=True)
     full = run_pipeline(b, full_cfg, clim, static)
-    layer_prev = fb if v_b["passes"] else fa
+    layer_prev = fb if v_b["passes"] else f_ship
     ff = Forecast("trustcast", "final", full.final_det)
     sb5 = holdout_board(
         [ff, layer_prev, Forecast("equal_mean", "baseline", eq_raw)]
@@ -430,7 +435,7 @@ def write_reports(results):
             "",
             md_table(tb["tgrid"]),
             "",
-            f"**B vs A**: {p4['B_vs_A']}",
+            f"**B vs {p4['B_reference']}** (previous shipped layer): {p4['B_vs_prev']}",
             "",
             md_table(
                 s4[
@@ -491,7 +496,7 @@ def write_reports(results):
             "verdicts": {
                 "L1": out["phase3"]["L1"]["passes"],
                 "A": out["phase3"]["A_vs_prev"]["passes"],
-                "B": out["phase4"]["B_vs_A"]["passes"],
+                "B": out["phase4"]["B_vs_prev"]["passes"],
             },
             "sources": out["sources"],
             "runtime_s": out["runtime_s"],
