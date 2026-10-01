@@ -196,7 +196,10 @@ IFS Cycle 50r1 and AIFS Single/ENS v2 went operational with the 06 UTC run of 12
 item 2026-05-12; ECMWF forum confirmation 2026-05-06). Phase 8 reports before/after 2026-05-13 00Z.
 
 ### Basemap (dashboard only)
-CARTO raster basemaps (light_all / dark_all), attribution "© OpenStreetMap contributors © CARTO".
+OpenFreeMap vector styles `positron` (light) and `dark` (https://tiles.openfreemap.org/styles/...),
+free, no API key; data © OpenStreetMap contributors (ODbL), tiles © OpenMapTiles; attribution shown on
+the map. Checked 2026-10-01 (HTTP 200). Replaced CARTO raster tiles, which on 2026-10-01 returned an
+"API key required" placeholder tile.
 
 ### IMD real-time gridded data (2026 truth)
 | Item | Value |

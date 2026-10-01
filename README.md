@@ -117,5 +117,5 @@ API docs at `http://localhost:8000/docs` (OpenAPI). Or `docker compose up` (API 
 Forecast data: Open-Meteo.com (CC BY 4.0) with model data from ECMWF, NOAA/NCEP, DWD and ECCC;
 dynamical.org (CC BY 4.0); ECMWF open data (CC BY 4.0). Observations: India Meteorological Department
 gridded data; NASA GPM IMERG V07 (via dynamical.org, CC BY 4.0). Boundaries: geoBoundaries (Runfola et
-al. 2020) India ADM2 (ODbL 1.0), ADM1 from DataMeet (CC BY 2.5 IN). Basemap © OpenStreetMap contributors
-© CARTO.
+al. 2020) India ADM2 (ODbL 1.0), ADM1 from DataMeet (CC BY 2.5 IN). Basemap: OpenFreeMap, © OpenMapTiles,
+data © OpenStreetMap contributors.

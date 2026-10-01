@@ -42,21 +42,12 @@ function cellsToGeoJSON(cells: Cell[]): GeoJSON.FeatureCollection {
   };
 }
 
-function basemap(dark: boolean): maplibregl.StyleSpecification {
-  const flavour = dark ? "dark_all" : "light_all";
-  return {
-    version: 8,
-    sources: {
-      base: {
-        type: "raster",
-        tiles: ["a", "b", "c"].map((s) => `https://${s}.basemaps.cartocdn.com/${flavour}/{z}/{x}/{y}.png`),
-        tileSize: 256,
-        attribution: "© OpenStreetMap contributors © CARTO",
-      },
-    },
-    layers: [{ id: "base", type: "raster", source: "base" }],
-  };
-}
+// Keyless vector basemap (OpenFreeMap, OSM data). CARTO raster tiles now need an API key.
+const basemap = (dark: boolean) => `https://tiles.openfreemap.org/styles/${dark ? "dark" : "positron"}`;
+const DATA_SOURCES = ["cells", "districts"];
+
+// data layers go under the basemap labels so place names stay readable
+const firstSymbol = (m: maplibregl.Map) => m.getStyle().layers.find((l) => l.type === "symbol")?.id;
 
 const isDark = () => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark";
 
@@ -78,7 +69,7 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
       ? (["match", ["get", "cat"], ...Object.entries(cat).flat(), "rgba(0,0,0,0)"] as unknown)
       : stepExpression(st ?? [[0, "#999"]]);
     if (!m.getLayer("cells-fill")) {
-      m.addLayer({ id: "cells-fill", type: "fill", source: "cells", paint: { "fill-color": color as never, "fill-opacity": 0.78 } });
+      m.addLayer({ id: "cells-fill", type: "fill", source: "cells", paint: { "fill-color": color as never, "fill-opacity": 0.78 } }, firstSymbol(m));
     } else {
       m.setPaintProperty("cells-fill", "fill-color", color as never);
     }
@@ -87,8 +78,8 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
       if (dsrc) dsrc.setData(ds);
       else {
         m.addSource("districts", { type: "geojson", data: ds });
-        m.addLayer({ id: "districts-hit", type: "fill", source: "districts", paint: { "fill-color": "#000", "fill-opacity": 0 } });
-        m.addLayer({ id: "districts-line", type: "line", source: "districts", paint: { "line-color": isDark() ? "#cbd5e1" : "#334155", "line-width": 0.8, "line-opacity": 0.8 } });
+        m.addLayer({ id: "districts-hit", type: "fill", source: "districts", paint: { "fill-color": "#000", "fill-opacity": 0 } }, firstSymbol(m));
+        m.addLayer({ id: "districts-line", type: "line", source: "districts", paint: { "line-color": isDark() ? "#cbd5e1" : "#334155", "line-width": 0.8, "line-opacity": 0.8 } }, firstSymbol(m));
       }
     }
     if (fc.features.length) {
@@ -134,11 +125,21 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
       if (f && latest.current.onDistrictClick) latest.current.onDistrictClick(String(f.properties.district_id), String(f.properties.district));
     });
     const onTheme = () => {
-      // swap only the basemap tiles; data layers stay
-      const flavour = isDark() ? "dark_all" : "light_all";
-      const s = m.getSource("base") as maplibregl.RasterTileSource | undefined;
-      s?.setTiles(["a", "b", "c"].map((x) => `https://${x}.basemaps.cartocdn.com/${flavour}/{z}/{x}/{y}.png`));
-      if (m.getLayer("districts-line")) m.setPaintProperty("districts-line", "line-color", isDark() ? "#cbd5e1" : "#334155");
+      // swap the basemap style and carry the data sources/layers over (inserted under the labels)
+      m.setStyle(basemap(isDark()), {
+        transformStyle: (prev, next) => {
+          if (!prev) return next;
+          const keep = prev.layers.filter((l) => "source" in l && DATA_SOURCES.includes(String(l.source)));
+          const at = next.layers.findIndex((l) => l.type === "symbol");
+          const layers = at < 0 ? [...next.layers, ...keep] : [...next.layers.slice(0, at), ...keep, ...next.layers.slice(at)];
+          const sources = { ...next.sources };
+          for (const k of DATA_SOURCES) if (prev.sources[k]) sources[k] = prev.sources[k];
+          return { ...next, sources, layers };
+        },
+      });
+      m.once("styledata", () => {
+        if (m.getLayer("districts-line")) m.setPaintProperty("districts-line", "line-color", isDark() ? "#cbd5e1" : "#334155");
+      });
     };
     window.addEventListener("themechange", onTheme);
     return () => {
