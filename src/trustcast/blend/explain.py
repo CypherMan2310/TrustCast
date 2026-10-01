@@ -102,9 +102,17 @@ def explanation_sentence(
     second = ranked[1] if len(ranked) > 1 else None
     unit = "mm" if variable == "precip" else "°C"
     what = "rainfall" if variable == "precip" else "maximum temperature"
+    equal = len(ranked) > 1 and ranked[0][1] - ranked[-1][1] < 0.01
+    lean = (
+        f"The {len(ranked)} available sources are weighted equally (adaptive weighting did not "
+        "earn its place on the development data)."
+        if equal
+        else None
+    )
     parts = [
         f"{district}, day {lead_day}: blended {what} {value:.1f} {unit}.",
-        f"The blend leans most on {SOURCE_LABELS.get(lead_src, lead_src)} ({lead_w * 100:.0f} %)"
+        lean
+        or f"The blend leans most on {SOURCE_LABELS.get(lead_src, lead_src)} ({lead_w * 100:.0f} %)"
         + (
             f", then {SOURCE_LABELS.get(second[0], second[0])} ({second[1] * 100:.0f} %)"
             if second

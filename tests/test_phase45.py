@@ -195,3 +195,17 @@ def test_explanation_sentence_is_grounded_in_its_inputs():
         "Not an official warning",
     ):
         assert token in s
+
+
+def test_explanation_sentence_says_equal_weights_when_blender_disabled():
+    s = explanation_sentence(
+        "Kottayam",
+        "precip",
+        1,
+        12.0,
+        {"ecmwf_aifs": 0.2, "ncep_gfs": 0.2, "ecmwf_ifs_ens": 0.2, "a": 0.2, "b": 0.2},
+        "monsoon_break",
+        [],
+        defer=False,
+    )
+    assert "weighted equally" in s and "leans most" not in s
