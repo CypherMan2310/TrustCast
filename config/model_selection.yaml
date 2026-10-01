@@ -1,0 +1,108 @@
+generated: '2026-10-01T07:49:33.998150+00:00'
+protocol:
+  tune:
+  - '2024-04-01'
+  - '2024-12-31'
+  temperature_tune:
+  - '2024-10-01'
+  - '2024-12-31'
+  holdout:
+  - '2025-01-01'
+  - '2025-12-31'
+models:
+  rain_pilot_precip:
+    qm: false
+    cell_bias: false
+    half_life: 10.0
+    p: 0.0
+    scope: cell
+    gate: true
+    temperature: 0.5
+    tail_map: true
+    extremes: false
+    uncertainty: true
+    verdicts:
+      L1: false
+      A: false
+      B: true
+      L5a_tail_map: true
+      L5b_classifiers: false
+    sources:
+    - ecmwf_aifs
+    - ecmwf_aifs_ens
+    - ecmwf_ifs_ctrl
+    - ecmwf_ifs_ens
+    - ncep_gfs
+    runtime_s: 457.0
+  rain_pilot_tmax:
+    qm: false
+    cell_bias: true
+    half_life: 10.0
+    p: 2.0
+    scope: cell
+    gate: true
+    temperature: 0.1
+    tail_map: false
+    extremes: true
+    uncertainty: true
+    verdicts:
+      L1: true
+      A: true
+      B: true
+      L5a_tail_map: false
+      L5b_classifiers: true
+    sources:
+    - ecmwf_aifs
+    - ecmwf_aifs_ens
+    - ecmwf_ifs_ctrl
+    - ecmwf_ifs_ens
+    - ncep_gfs
+    runtime_s: 524.7
+  heat_pilot_precip:
+    qm: false
+    cell_bias: false
+    half_life: 10.0
+    p: 0.0
+    scope: region
+    gate: false
+    temperature: 0.1
+    tail_map: true
+    extremes: false
+    uncertainty: true
+    verdicts:
+      L1: false
+      A: false
+      B: false
+      L5a_tail_map: true
+      L5b_classifiers: false
+    sources:
+    - ecmwf_aifs
+    - ecmwf_aifs_ens
+    - ecmwf_ifs_ctrl
+    - ecmwf_ifs_ens
+    - ncep_gfs
+    runtime_s: 306.2
+  heat_pilot_tmax:
+    qm: false
+    cell_bias: true
+    half_life: 10.0
+    p: 1.0
+    scope: region
+    gate: false
+    temperature: 0.3
+    tail_map: false
+    extremes: true
+    uncertainty: true
+    verdicts:
+      L1: true
+      A: true
+      B: false
+      L5a_tail_map: false
+      L5b_classifiers: true
+    sources:
+    - ecmwf_aifs
+    - ecmwf_aifs_ens
+    - ecmwf_ifs_ctrl
+    - ecmwf_ifs_ens
+    - ncep_gfs
+    runtime_s: 939.4

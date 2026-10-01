@@ -304,7 +304,8 @@ def run_one(cfg, root, region, variable, n_boot, do_ablations, sources=None):
     out["phase5_gates"] = {"tail_map": v_tail, "classifiers": v_cls}
     ff = Forecast("trustcast", "final", full.final_det)
     sb5 = holdout_board(
-        [ff, layer_prev, Forecast("equal_mean", "baseline", eq_raw)]
+        [ff, layer_prev]
+        + ([Forecast("equal_mean", "baseline", eq_raw)] if layer_prev.name != "equal_mean" else [])
         + [f for f in base if f.name in ("superensemble", "climatology")],
         b,
         layer_prev.name,
@@ -541,7 +542,7 @@ def write_reports(results):
                 "L5a_tail_map": out["phase5_gates"]["tail_map"]["passes"],
                 "L5b_classifiers": out["phase5_gates"]["classifiers"]["passes"],
             },
-            "sources": out["sources"],
+            "sources": list(out["sources"] or []),
             "runtime_s": out["runtime_s"],
         }
     md3 += [
