@@ -107,15 +107,24 @@ def build(cfg, root, event_id: str, ev: dict) -> Path:
         for name, da in fcs.items()
         for lead, vals in sorted(_series(da, table, did, days, off).items())
     ]
+    base_desc = (
+        "equal-weight mean of the sources (adaptive weighting did not pass its gate)"
+        if pc.p == 0
+        else f"decayed-skill blend (half-life {pc.half_life:g} d, p = {pc.p:g})"
+    )
+    if pc.cell_bias or pc.qm:
+        base_desc = "bias-corrected " + base_desc
+    if pc.tail_map:
+        base_desc += ", tail-mapped (monthly rolling quantile map)"
     notes = [
         f"District chosen from IMD observations: {did}, peak on {focus.date()} "
         f"({observed[str(focus.date())]} {'mm' if ev['variable'] == 'precip' else 'degC'}).",
         f"Configuration: {provenance}.",
         f"Learned layers (gate, event classifiers, quantile models) start at inits >= {pc.learn_start.date()}; "
         + (
-            "they were NOT yet trained at this event, so TRUSTCAST here = bias-corrected decayed-skill blend."
+            f"they were NOT yet trained at this event, so TRUSTCAST here = {base_desc}."
             if focus < pc.learn_start
-            else "they were active at this event."
+            else f"they were active at this event (on top of: {base_desc})."
         ),
         "Sources without data for these dates are absent (nothing is substituted).",
         DISCLAIMER,
