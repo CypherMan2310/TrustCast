@@ -352,3 +352,70 @@ Dry run today: blocked (no 2026 forecasts collected yet, no model_selection.yaml
 ### Packaging
 README (architecture diagram, commands, limitations, attribution), docs/DEMO.md, Dockerfile (API),
 web/Dockerfile, docker-compose.yml, web/.env.example.
+
+## 2026-09-30 (night): refinements from first real results
+- **IMD real-time tier** for 2026 truth (`truth/imd.py`: rain 0.25°, Tmax 0.5° with one-ring coastal fill
+  + bilinear to 0.25°); `truth_v1` gains `rain_source`/`tmax_source` (0 none, 1 IMD final, 2 IMD
+  real-time, 3 IMERG). Polite downloader (3 s pause), `scripts/download_imd_realtime.py`.
+- **Phase 2 scoreboard, first real run** (reports/phase2, committed 93864ed): rain, the equal-weight mean
+  is hard to beat (rain-pilot lead-1 RMSE 11.11; AIFS 11.14); heavy-rain frequency bias 0.3-0.6 for all
+  models; IFS-ENS best Brier skill. Tmax in Kerala: raw models (RMSE 2.6-3.2 °C) worse than climatology
+  (1.46) and persistence (0.91).
+- That evidence led to an **L1 variant: per-cell, leak-free decayed bias removal** for temperature
+  (`bias/decayed.py`, built on `skill.tracker.decayed_bias`; leakage test). The L1 variant (qm,
+  cell_bias, qm+cell_bias) is chosen on the tune window and gated on the holdout like any layer.
+- Regime strata in scoreboards (Phase 5 holdout, Phase 8). Replay districts must have >= 3 cells and >= 50 %
+  coverage (Mahe, a one-cell enclave, had been picked).
+
+## 2026-10-01: Phases 3-5 on the dev split, frozen source set, L5 gates
+
+### Incidents
+- Scheduled jobs and the experiment run died with 0xC000013A (console Ctrl-C/close) when their console
+  windows were closed. Tasks now start through `scripts/ops/run_hidden.vbs` (wscript, no window);
+  re-registered and restarted. Long runs I start use detached hidden processes.
+- **Dashboard visual check (pane visible)**: CARTO raster tiles now return an "API key required" tile.
+  Replaced by keyless OpenFreeMap vector styles (positron/dark); data layers sit under the labels and
+  survive the theme switch (style swap with `transformStyle`). Verified light and dark by screenshot.
+
+### Decisions (made before the frozen test; logged here because they shape it)
+1. **Frozen source set.** Previous Runs (IFS HRES, ICON, GEM) cover 3 of 24 dev months and GEFS 4 of 24:
+   the Open-Meteo daily quota allows ~1 model-region-month per day (~10 more days for dev alone) and GEFS
+   reads at ~47 min per month-region. Rather than partially using them, a data-driven rule
+   (`verify/assemble.py::source_coverage`): a source is used only if it has >= 80 % of daily 00Z dev
+   inits (2024-04-01..2025-12-26, counted from its own first init) over >= 150 days. Result for both
+   regions: IFS-ENS control, AIFS, GFS, IFS-ENS, AIFS-ENS (from 2025-07-02). The set is written to
+   `model_selection.yaml` and used by forecasts, replays and the frozen test; the other backfills keep
+   running for future work but are not used.
+2. **Rule 5 applied strictly to Blender A.** Previously a failed A still shipped. Now a failed A is
+   disabled (p = 0: equal weights over available sources) and B is gated against the previous *shipped*
+   layer. Explanations then say the sources are weighted equally.
+3. **L5 gated on its purpose.** The plan asks for event skill next to RMSE for the extreme layer; an RMSE
+   gate would always reject sharpening. Split into L5a tail mapping (ships if heavy-event ETS at the first
+   threshold is significantly higher at >= 3 of 5 leads and lower at none; paired block bootstrap per
+   lead, `verify/compare.py::event_verdict`) and L5b classifiers (ship if Brier at the first threshold is
+   significantly lower than the ensemble exceedance fraction, else climatology, and higher than none;
+   otherwise probabilities = raw ensemble fraction). **Disclosure:** this gate was written after seeing
+   the rain-pilot ablation (tail map: RMSE +0.9 mm, ETS 0.16 -> 0.27) of an earlier run; it is stricter
+   than before (previously L5 shipped unconditionally) and it disabled layers in 3 of 8 cases.
+
+### Results (holdout = 2025, tune = 2024-04..12; reports/phase3-5; runtime ~55 min)
+| Region · var | L1 | A | B | L5a tail | L5b classifiers |
+|---|---|---|---|---|---|
+| rain_pilot precip | qm: no (0/5) | no (2/5) | **yes** (3/5 vs equal mean) | **yes** (5/5, ΔETS +0.11) | no (ensemble fraction) |
+| rain_pilot tmax | **cell bias yes** (5/5, -1.56 °C) | **yes** (5/5) | **yes** (5/5) | n/a (no ≥ 40 °C days) | **yes** |
+| heat_pilot precip | qm: no (worse 5/5) | no (1/5) | no | **yes** (4/5, ΔETS +0.05) | no (ensemble fraction) |
+| heat_pilot tmax | **cell bias yes** (5/5, -0.69 °C) | **yes** (4/5) | no (worse 3/5) | no (worse 5/5) | **yes** |
+
+Final product vs baselines (holdout, lead 1; 95 % CI in reports/phase5):
+- Rain pilot Tmax: TRUSTCAST RMSE 0.94 °C [0.89, 0.98] vs equal mean 2.74, superensemble 1.77,
+  climatology 1.41. Heat pilot Tmax: 0.88 [0.82, 0.95] vs 1.73 / 1.25 / 2.44; heat-day ETS 0.64 vs 0.43.
+- Rain: **TRUSTCAST has higher RMSE than the equal mean** (rain pilot 10.90 vs 10.31 mm at lead 1;
+  heat pilot 8.52 vs 8.02) because the tail mapping restores heavy-rain amounts; in exchange heavy-rain
+  ETS 0.29 vs 0.23 and frequency bias 0.99 vs 0.54 (rain pilot, lead 1). Not hidden: this is the plan's
+  trade-off, shown in every table.
+- CQR 90 % intervals (holdout coverage by lead): rain 93.6-95.5 % (conservative: too wide), Tmax
+  89.4-90.5 %.
+- Defer flag (rain pilot precip): 17.5 % of cases flagged; their RMSE is 2.9x that of unflagged cases.
+- Ablations (lead 1 RMSE): removing AI sources hurts everywhere (rain pilot rain 11.34 vs 10.90, heat pilot
+  rain 8.89 vs 8.52, Tmax 1.16 vs 0.94 and 0.94 vs 0.88); removing bias correction doubles Tmax error
+  (2.11 vs 0.94, 1.62 vs 0.88); regime features change little (< 0.01 mm / °C).

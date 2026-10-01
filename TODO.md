@@ -9,7 +9,7 @@ Work items per module, each with an acceptance check. Tick only when the check h
 - [x] `CLAUDE.md`, `TODO.md`, `WORK.md`, `DATA_SOURCES.md`, `.env.example`, ruff/pytest config.
 - [x] Python 3.12 venv + pinned `requirements.txt` / `requirements.lock`. Check: `.venv/Scripts/python -V` = 3.12.
 - [x] Pre-Phase-0 prototype moved to `prototype/`, data kept. Check: `prototype/config.py` resolves `data/`.
-- [ ] git: initial commit. Check: `git log` shows the Phase 0 commit series.
+- [x] git: initial commit. Check: `git log` shows the Phase 0 commit series.
 
 ### grid (contracts)
 - [x] IMD 0.25° / 1.0° grid definitions, on-grid bbox subsetting. Check: `tests/test_grid.py` green.
@@ -45,17 +45,21 @@ Work items per module, each with an acceptance check. Tick only when the check h
 ## Phase 2: Baselines and verification harness
 - [x] Harness, baselines, bootstrap, common-sample scoreboard, skill table, one command (tests green).
 - [x] IMD 1991-2023 history on disk (climatology baseline + BSS reference).
-- [ ] Dev backfill complete (dyn fast sources ~hours; GEFS ~1-2 days; Previous Runs ~10-12 days of quota).
+- [x] Dev backfill complete for the dynamical.org sources (IFS-ENS ctrl, AIFS, GFS, IFS-ENS, AIFS-ENS).
+- [ ] Previous Runs (IFS HRES, ICON, GEM) and GEFS dev backfill (quota/throughput bound; still running).
+      Excluded from the frozen source set by the coverage rule; future work only.
 - [ ] Scoreboard on complete dev data (weekly job re-runs it automatically).
 
 ## Phase 3-5
 - [x] QM, leak-free tracker (leakage test), blender A, gate B, regimes, tail map, calibrated classifiers,
       CQR, defer flag, SHAP explanations, pipeline + ablations, experiment driver (tests green).
-- [ ] `run_experiments.py` on complete dev data -> reports/phase3-5, config/model_selection.yaml.
+- [x] `run_experiments.py` on the frozen source set -> reports/phase3-5, config/model_selection.yaml
+      (2026-10-01; L5 split into tail map (ETS gate) and classifiers (Brier gate); failed A disabled).
 
 ## Phase 6
 - [x] API contract + implementation (6 contract tests), products writer, districts.
 - [x] Dashboard: map, district card, skill, verification, sources, replay; build + ESLint clean.
+- [x] Visual map check with the pane visible (light + dark); keyless OpenFreeMap basemap.
 - [ ] Live products for today's runs (needs 2026 collection; daily `forecast` task).
 
 ## Phase 7

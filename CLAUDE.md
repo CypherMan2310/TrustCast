@@ -57,8 +57,8 @@ L3B gated blender → L4 regimes → L5 extremes → L6 uncertainty → L7 defer
 |---|---|
 | 0 Foundations (repo, convention files, archiver) | done; Windows Task Scheduler jobs `\TRUSTCAST\*` (scripts/ops) |
 | 1 Adapters, truth, alignment | done; open: IMD 2026 files |
-| 2 Baselines + verification harness | code done; scoreboard waits for the dev backfill |
-| 3–5 Layers, gates, ablations | code + tests done; `run_experiments.py` waits for the dev backfill |
+| 2 Baselines + verification harness | done (reports/phase2; Previous Runs + GEFS dev backfill incomplete) |
+| 3–5 Layers, gates, ablations | done 2026-10-01 (reports/phase3-5, config/model_selection.yaml) |
 | 6 API + dashboard | done (contract tests, `npm run build`, ESLint clean) |
 | 7 Replays, bulletins, overrides, CAP | done; replays rebuilt weekly |
 | 8 Frozen test, packaging | runner + README + Docker + demo script done; frozen run blocked on 2026 data/IMD 2026 |
@@ -187,6 +187,15 @@ IMD Tmax of day D is D's daytime maximum and pairs with the canonical window lab
 Tune on valid days 2024-04..2024-12; gate on 2025. A layer ships if RMSE is significantly lower
 (paired block bootstrap 95 % CI) at >= 3 of 5 lead days and significantly higher at none. Learned
 layers are refit quarterly from 2024-10-01 on data verified before each quarter.
+
+### Frozen source set and layer gates (2026-10-01)
+Sources used by layers, forecasts, replays and the frozen test = `model_selection.yaml: models.<key>.sources`
+(rule `verify/assemble.py::source_coverage`: >= 80 % of daily 00Z dev inits over >= 150 days). Now: IFS-ENS
+control, AIFS, GFS, IFS-ENS, AIFS-ENS. A failed Blender A ships as p = 0 (equal weights); B is gated against
+the previous shipped layer. L5 = `tail_map` (gate: heavy-event ETS, `event_verdict`) + `extremes`
+classifiers (gate: Brier vs ensemble fraction; fallback probabilities = ensemble fraction,
+`PipelineResult.prob_method`). After `reports/phase8/FINAL_LOCK.json` exists, `run_experiments.py` refuses
+to re-tune.
 
 ### Source matrix
 See DATA_SOURCES.md "Source matrix". Evaluation (dev + test) uses: dynamical.org true-init runs
