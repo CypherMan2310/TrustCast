@@ -60,7 +60,7 @@ export default function Home() {
     return out;
   }, [g]);
   const stops = stopsFor(layer, variable);
-  const units = g?.units ?? "";
+  const units = (g?.units ?? "").replace("degC", "°C");
   const isProb = units === "probability";
   const isValueLayer = !isProb && layer !== "disagreement" && layer !== "defer";
   const thr = variable === "precip" ? 64.5 : 40;
