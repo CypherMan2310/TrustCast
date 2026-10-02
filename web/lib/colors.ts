@@ -50,10 +50,10 @@ export const SOURCE_COLORS: Record<string, string> = {
   ncep_gefs: "#ff7f0e",
   ecmwf_ifs_ens: "#17becf",
   ecmwf_aifs_ens: "#e377c2",
-  trustcast: "#111827",
-  equal_mean: "#7f7f7f",
+  trustcast: "#4f46e5",
+  equal_mean: "#94a3b8",
   superensemble: "#bcbd22",
-  observed: "#000000",
+  observed: "#334155",
 };
 
 export function stopsFor(layer: string, variable: "precip" | "tmax"): [number, string][] {

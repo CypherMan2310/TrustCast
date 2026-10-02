@@ -2,36 +2,64 @@
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
+/* Design tokens. Light is the default; dark follows the OS unless the user picked a theme. */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f4f6fb;
   --surface: #ffffff;
-  --text: #111827;
-  --muted: #5b6474;
-  --border: #e3e6eb;
-  --chip: #eef1f5;
-  --accent: #2563eb;
+  --surface-2: #f7f9fc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --border: #e3e8f0;
+  --chip: #eef2f8;
+  --accent: #4f46e5;
+  --accent-2: #0ea5e9;
+  --accent-soft: #eef2ff;
+  --ok: #059669;
+  --warn: #d97706;
+  --bad: #e11d48;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px -4px rgb(15 23 42 / 0.08);
+  --ring: rgb(79 70 229 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0c1017;
-    --surface: #131a24;
-    --text: #e6e9ef;
-    --muted: #9aa4b2;
-    --border: #263041;
-    --chip: #1d2634;
-    --accent: #60a5fa;
+    --bg: #070b14;
+    --surface: #0e1522;
+    --surface-2: #121b2b;
+    --text: #e5e9f2;
+    --muted: #8d9ab0;
+    --faint: #5d6b82;
+    --border: #1e293b;
+    --chip: #18223a;
+    --accent: #818cf8;
+    --accent-2: #38bdf8;
+    --accent-soft: #1e1b4b;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #fb7185;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+    --ring: rgb(129 140 248 / 0.4);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0c1017;
-  --surface: #131a24;
-  --text: #e6e9ef;
-  --muted: #9aa4b2;
-  --border: #263041;
-  --chip: #1d2634;
-  --accent: #60a5fa;
+  --bg: #070b14;
+  --surface: #0e1522;
+  --surface-2: #121b2b;
+  --text: #e5e9f2;
+  --muted: #8d9ab0;
+  --faint: #5d6b82;
+  --border: #1e293b;
+  --chip: #18223a;
+  --accent: #818cf8;
+  --accent-2: #38bdf8;
+  --accent-soft: #1e1b4b;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --ring: rgb(129 140 248 / 0.4);
 }
 
 @theme inline {
@@ -47,10 +75,125 @@ body {
 
 body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
 }
 
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* subtle scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.brand-gradient {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* page-level fade in */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.35s ease-out both;
+}
+
+/* skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--chip) 0%, var(--surface-2) 50%, var(--chip) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* range input */
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+/* MapLibre chrome follows the theme */
 .maplibregl-popup-content {
   background: var(--surface) !important;
   color: var(--text) !important;
-  border-radius: 8px !important;
+  border: 1px solid var(--border);
+  border-radius: 10px !important;
+  box-shadow: var(--shadow) !important;
+  padding: 8px 10px !important;
+}
+.maplibregl-popup-tip {
+  display: none;
+}
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border) !important;
+}
+:root[data-theme="dark"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--surface) 80%, transparent) !important;
+  color: var(--muted);
+  border-radius: 8px 0 0 0;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--muted) !important;
+}
+
+/* Recharts follows the theme */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
+.recharts-cartesian-grid line {
+  stroke: var(--border);
+}
+.recharts-legend-item-text {
+  color: var(--muted) !important;
 }

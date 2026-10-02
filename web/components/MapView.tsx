@@ -18,7 +18,7 @@ interface Props {
   districts?: GeoJSON.FeatureCollection | null;
   onDistrictClick?: (id: string, name: string) => void;
   formatValue?: (v: number) => string;
-  height?: number;
+  height?: number | string;
 }
 
 const H = 0.125;
@@ -100,7 +100,8 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
     map.current = m;
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
-    m.on("load", () => {
+    // draw as soon as the style is parsed; waiting for "load" would also wait for every basemap tile
+    m.once("style.load", () => {
       loaded.current = true;
       m.getContainer().dataset.loaded = "1"; // marker for automated checks
       draw();
@@ -144,9 +145,12 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
     window.addEventListener("themechange", onTheme);
     return () => {
       window.removeEventListener("themechange", onTheme);
+      const el = m.getContainer();
       m.remove();
       map.current = null;
       loaded.current = false;
+      delete el.dataset.loaded; // a re-mount (React StrictMode) must fit and mark again
+      delete el.dataset.bounds;
     };
   }, []);
 
@@ -155,19 +159,27 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
     draw();
   }, [cells, stops, categorical, districts, onDistrictClick, formatValue]);
 
-  return <div ref={ref} style={{ height }} className="w-full overflow-hidden rounded-xl border border-[var(--border)]" aria-label="Forecast map" role="region" />;
+  return <div ref={ref} style={{ height }} className="w-full overflow-hidden rounded-2xl" aria-label="Forecast map" role="region" />;
 }
 
-export function Legend({ stops, units }: { stops: [number, string][]; units: string }) {
+export function Legend({ stops, units, title }: { stops: [number, string][]; units: string; title?: string }) {
+  // stepped colour bar: one swatch per class, labelled with its lower bound
+  const shown = stops.filter(([, c]) => c !== "rgba(0,0,0,0)");
+  const fmtV = (v: number) => (units === "probability" ? `${Math.round(v * 100)}%` : Number.isInteger(v) ? String(v) : v.toFixed(1));
   return (
-    <div className="flex flex-wrap items-center gap-1 text-xs text-[var(--muted)]">
-      {stops.map(([v, c], i) => (
-        <span key={i} className="flex items-center gap-1">
-          <span className="inline-block h-3 w-5 rounded-sm border border-[var(--border)]" style={{ background: c }} />
-          {i === 0 ? `<${stops[1]?.[0] ?? v}` : `≥${v}`}
-        </span>
-      ))}
-      <span className="ml-1">{units}</span>
+    <div className="min-w-0">
+      {title && <div className="mb-1 text-[11px] font-medium text-[var(--muted)]">{title}</div>}
+      <div className="flex items-end gap-2">
+        <div className="flex min-w-0 flex-1">
+          {shown.map(([v, c], i) => (
+            <div key={i} className="min-w-[34px] flex-1">
+              <div className={`h-2.5 ${i === 0 ? "rounded-l-full" : ""} ${i === shown.length - 1 ? "rounded-r-full" : ""}`} style={{ background: c }} />
+              <div className="tabular mt-1 text-[10px] text-[var(--muted)]">≥{fmtV(v)}</div>
+            </div>
+          ))}
+        </div>
+        <span className="pb-3.5 text-[11px] whitespace-nowrap text-[var(--muted)]">{units === "probability" ? "" : units}</span>
+      </div>
     </div>
   );
 }
