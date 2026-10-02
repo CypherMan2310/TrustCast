@@ -8,7 +8,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TRUSTCAST",
+  title: { default: "TRUSTCAST · forecast blending", template: "%s · TRUSTCAST" },
   description:
     "Hybrid AI–NWP multi-model forecast blending for India (SIH26081). Decision-support tool. Not an official warning.",
 };
