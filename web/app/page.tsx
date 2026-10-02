@@ -104,11 +104,11 @@ export default function Home() {
         subtitle={
           g ? (
             <>
-              One blended forecast from five AI and physics models, on the IMD 0.25° grid · run{" "}
+              One blended forecast from up to five AI and physics models, on the IMD 0.25° grid · run{" "}
               <span className="font-medium text-[var(--text)]">{fmtDate(g.init_time)} 00 UTC</span>
             </>
           ) : (
-            "One blended forecast from five AI and physics models, on the IMD 0.25° grid"
+            "One blended forecast from up to five AI and physics models, on the IMD 0.25° grid"
           )
         }
         actions={

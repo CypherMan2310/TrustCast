@@ -127,6 +127,7 @@ function DistrictInner() {
   const cur = dist.leads.find((l) => l.lead_day === sel) ?? dist.leads[0];
   const curWeights = Object.entries(cur?.weights ?? {}).filter(([, w]) => w >= 0.005).sort((a, b) => b[1] - a[1]);
   const prov = typeof d.data.meta.config_provenance === "string" ? d.data.meta.config_provenance : null;
+  const avail = (d.data.meta.sources_available as Record<string, string[]> | undefined)?.[d.data.init_time.slice(0, 10)];
 
   return (
     <div className="space-y-6">
@@ -143,6 +144,7 @@ function DistrictInner() {
           </div>
           <div className="flex flex-wrap gap-2">
             {dist.coverage < 0.5 && <Pill tone="warn" dot>{Math.round(dist.coverage * 100)} % of district inside pilot region</Pill>}
+            {avail && <Pill tone={avail.length >= 3 ? "accent" : "warn"} dot>{avail.length} model{avail.length === 1 ? "" : "s"} in this run</Pill>}
             {dist.leads.some((l) => l.defer) ? <Pill tone="warn" dot>low confidence on some days</Pill> : <Pill tone="ok" dot>models broadly agree</Pill>}
           </div>
         </div>
@@ -170,6 +172,7 @@ function DistrictInner() {
                 <span className="ml-1 text-sm font-normal text-[var(--muted)]">{unit}</span>
               </div>
               <div className="tabular text-xs text-[var(--muted)]">{l.lo90 !== null ? `90 % range ${fmt(l.lo90)}–${fmt(l.hi90)}` : "range n/a"}</div>
+              {p === null && <div className="mt-3 text-[11px] text-[var(--faint)]">chance ≥ {thr}: n/a (no ensemble in this run)</div>}
               {p !== null && (
                 <div className="mt-3">
                   <div className="flex justify-between text-[11px] text-[var(--muted)]">
