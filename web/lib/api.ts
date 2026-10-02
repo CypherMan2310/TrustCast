@@ -135,7 +135,18 @@ export async function apiGet<T>(path: string): Promise<T> {
   return (await r.json()) as T;
 }
 
+// Training sandbox: while a training mission runs, writes are simulated locally and never sent.
+let sandbox = false;
+export function setSandboxMode(on: boolean) {
+  sandbox = on;
+}
+export const isSandbox = () => sandbox;
+
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  if (sandbox) {
+    await new Promise((r) => setTimeout(r, 400));
+    return { id: 0, effect: "Simulation only (training): nothing was saved and no weights changed.", sandbox: true, body } as T;
+  }
   const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

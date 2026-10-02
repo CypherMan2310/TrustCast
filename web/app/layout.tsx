@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 import Shell from "@/components/Shell";
+import { TrainingProvider } from "@/components/training/TrainingProvider";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-full">
-        <Shell>{children}</Shell>
+        <TrainingProvider>
+          <Shell>{children}</Shell>
+        </TrainingProvider>
       </body>
     </html>
   );

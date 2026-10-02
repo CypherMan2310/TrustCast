@@ -7,6 +7,7 @@ import MapView, { Legend } from "@/components/MapView";
 import { Card, Empty, ErrorBox, Icon, Loading, PageHeader, Pill, Segmented, Select, Skeleton, Stat, fmt, fmtDate } from "@/components/ui";
 import { GridLayer, REGIONS, Region, Variable, label, useApi } from "@/lib/api";
 import { stopsFor } from "@/lib/colors";
+import { useTrainingReporter } from "@/components/training/TrainingProvider";
 
 interface Alerts {
   init_time: string;
@@ -43,7 +44,8 @@ export default function Home() {
   const [lead, setLead] = useState(1);
   const [layer, setLayer] = useState("final");
   const [init, setInit] = useState<string>("");
-  const [mountedAt] = useState(() => Date.now()); // read the clock once, not during every render
+  const [mountedAt] = useState(() => Date.now());
+  const report = useTrainingReporter(); // read the clock once, not during every render
 
   const products = useApi<{ products: Record<string, string[]> }>("/v1/products");
   const inits = products.data?.products[`${region}/${variable}`] ?? [];
@@ -99,7 +101,18 @@ export default function Home() {
     setLayer("final");
     setInit("");
   };
-  const openDistrict = (id: string) => router.push(`/district/${encodeURIComponent(id)}?variable=${variable}${init ? `&init=${init}` : ""}`);
+  const openDistrict = (id: string, name: string) => {
+    report({ type: "district-opened", id, name });
+    router.push(`/district/${encodeURIComponent(id)}?variable=${variable}${init ? `&init=${init}` : ""}`);
+  };
+  const pickLead = (l: number) => {
+    setLead(l);
+    report({ type: "lead-changed", lead: l });
+  };
+  const pickLayer = (l: string) => {
+    setLayer(l);
+    report({ type: "layer-changed", layer: l });
+  };
 
   return (
     <div className="space-y-6">
@@ -150,7 +163,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div data-tour="stats" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {!stats ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-2xl" />)
         ) : (
@@ -185,11 +198,12 @@ export default function Home() {
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <Card pad={false} className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div data-tour="lead-tabs">
             <Segmented
               size="sm"
               ariaLabel="Lead day"
               value={lead}
-              onChange={setLead}
+              onChange={pickLead}
               options={[1, 2, 3, 4, 5].map((l) => ({
                 value: l,
                 label: (
@@ -200,8 +214,10 @@ export default function Home() {
                 ),
               }))}
             />
+            </div>
             <div className="ml-auto flex flex-wrap items-end gap-2">
-              <Select value={layer} onChange={setLayer}>
+              <div data-tour="layer-select">
+              <Select value={layer} onChange={pickLayer}>
                 <optgroup label="Blend">
                   {layers.filter((l) => MAIN_LAYERS.includes(l)).map((l) => <option key={l} value={l}>{layerLabel(l)}</option>)}
                 </optgroup>
@@ -216,6 +232,7 @@ export default function Home() {
                   </optgroup>
                 )}
               </Select>
+              </div>
               <Select value={init} onChange={setInit}>
                 <option value="">Latest run</option>
                 {inits.map((s) => <option key={s} value={s}>{fmtDate(s)}</option>)}
@@ -225,7 +242,7 @@ export default function Home() {
           {grid.error ? (
             <div className="p-4"><ErrorBox error={grid.error} onRetry={grid.reload} /></div>
           ) : (
-            <div className="relative">
+            <div className="relative" data-tour="forecast-map">
               {grid.loading && (
                 <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)]/95 px-3 py-1.5 text-xs text-[var(--muted)] shadow-[var(--shadow)]">
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
@@ -243,7 +260,7 @@ export default function Home() {
             </div>
           )}
           <div className="flex flex-wrap items-end justify-between gap-4 border-t border-[var(--border)] px-4 py-3">
-            <div className="w-full max-w-xl">
+            <div className="w-full max-w-xl" data-tour="legend">
               <Legend stops={stops} units={units} title={layerLabel(layer)} />
             </div>
             {g && (

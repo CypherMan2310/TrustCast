@@ -85,7 +85,7 @@ export default function VerificationPage() {
         {s.error && <ErrorBox error={s.error} onRetry={s.reload} />}
         {s.data && !sel?.models && <Empty>Experiments have not been run yet.</Empty>}
         {sel?.models && (
-          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+          <div data-tour="gate-matrix" className="overflow-x-auto rounded-xl border border-[var(--border)]">
             <table className="w-full text-sm">
               <thead className="bg-[var(--surface-2)] text-left text-xs text-[var(--muted)]">
                 <tr>
@@ -123,7 +123,7 @@ export default function VerificationPage() {
           </div>
         )}
         {sources.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+          <div data-tour="frozen-sources" className="mt-4 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-[var(--muted)]">Frozen source set:</span>
             {sources.map((x) => (
               <span key={x} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-0.5">

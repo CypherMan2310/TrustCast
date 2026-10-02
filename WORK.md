@@ -419,3 +419,14 @@ Final product vs baselines (holdout, lead 1; 95 % CI in reports/phase5):
 - Ablations (lead 1 RMSE): removing AI sources hurts everywhere (rain pilot rain 11.34 vs 10.90, heat pilot
   rain 8.89 vs 8.52, Tmax 1.16 vs 0.94 and 0.94 vs 0.88); removing bias correction doubles Tmax error
   (2.11 vs 0.94, 1.62 vs 0.88); regime features change little (< 0.01 mm / °C).
+
+## 2026-10-02: dashboard redesign, district clicks, Forecaster Training
+- Redesign (sidebar shell, tokens, segmented controls, stat tiles, day strip, forest plot, gate matrix,
+  replay scorecard, source cards). Map draws on `style.load`; re-fits after a StrictMode re-mount.
+- Bug (user report): not every district was clickable. Cause: the hover label sat at the cursor and
+  swallowed clicks (worst near the top edge). Fix: click-through label with offset; geometry-based
+  district hit-test (`web/lib/geo.ts`, 5 px tolerance); ids URL-encoded (non-ASCII ids); 0 %-coverage
+  slivers hidden. Verified: all 63 real districts found from interior points; 8 real navigations OK.
+- Forecaster Training (EmberGrid-style tutorial): 6 missions, spotlight, hints on wrong actions, XP and
+  badges, sandboxed override. Verified in the browser: all 6 missions complete (600/600 XP), wrong-answer
+  hints shown, 0 override POSTs sent during training, phone layout docks the bubble.

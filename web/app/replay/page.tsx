@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContai
 import { Card, Empty, ErrorBox, Icon, Loading, PageHeader, Pill, Segmented, Skeleton, fmt, fmtDate, tooltipStyle } from "@/components/ui";
 import { Replay, label, useApi } from "@/lib/api";
 import { SOURCE_COLORS } from "@/lib/colors";
+import { useTrainingReporter } from "@/components/training/TrainingProvider";
 
 interface Index {
   events: { event_id: string; title: string; focus_day: string; district_id: string; variable: string }[];
@@ -19,7 +20,12 @@ const prettyDistrict = (id: string) =>
 
 function ReplayView({ id }: { id: string }) {
   const r = useApi<Replay>(`/v1/replay/${id}`);
-  const [lead, setLead] = useState(1);
+  const [lead, setLeadState] = useState(1);
+  const report = useTrainingReporter();
+  const setLead = (l: number) => {
+    setLeadState(l);
+    report({ type: "replay-lead", lead: l });
+  };
   const data = r.data;
   const days = useMemo(() => (data ? Object.keys(data.observed).sort() : []), [data]);
   const names = useMemo(() => (data ? Array.from(new Set(data.series.map((s) => s.forecast))) : []), [data]);
@@ -53,9 +59,14 @@ function ReplayView({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <Card
+        tour="scorecard"
         title={`What each forecast said ${lead} day${lead > 1 ? "s" : ""} ahead`}
         subtitle={`${prettyDistrict(data.district_id)} · ${fmtDate(data.focus_day, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`}
-        right={<Segmented size="sm" ariaLabel="Days ahead" value={lead} onChange={setLead} options={[1, 2, 3, 4, 5].map((l) => ({ value: l, label: `${l}d` }))} />}
+        right={
+          <div data-tour="replay-lead">
+            <Segmented size="sm" ariaLabel="Days ahead" value={lead} onChange={setLead} options={[1, 2, 3, 4, 5].map((l) => ({ value: l, label: `${l}d` }))} />
+          </div>
+        }
       >
         <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
           <div className="rounded-2xl bg-[var(--surface-2)] p-5">
@@ -137,6 +148,7 @@ function ReplayView({ id }: { id: string }) {
 }
 
 export default function ReplayPage() {
+  const report = useTrainingReporter();
   const idx = useApi<Index>("/v1/replay");
   const [sel, setSel] = useState<string | null>(null);
   const current = sel ?? idx.data?.events[0]?.event_id ?? null;
@@ -151,13 +163,16 @@ export default function ReplayPage() {
       {idx.error && <ErrorBox error={idx.error} onRetry={idx.reload} />}
       {idx.data && idx.data.events.length === 0 && <Empty>No replays built yet (scripts/build_replays.py).</Empty>}
       {idx.data && idx.data.events.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div data-tour="event-cards" className="grid gap-3 md:grid-cols-3">
           {idx.data.events.map((e) => {
             const on = current === e.event_id;
             return (
               <button
                 key={e.event_id}
-                onClick={() => setSel(e.event_id)}
+                onClick={() => {
+                  setSel(e.event_id);
+                  report({ type: "replay-selected", id: e.event_id, title: e.title });
+                }}
                 className={`flex gap-3 rounded-2xl border p-4 text-left shadow-[var(--shadow)] transition ${
                   on ? "border-[var(--accent)] bg-[var(--accent-soft)]/60 ring-2 ring-[var(--ring)]" : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--faint)]"
                 }`}

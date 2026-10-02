@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { Disclaimer, Icon, fmtDate } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { useTraining } from "@/components/training/TrainingProvider";
 
 const NAV = [
   { href: "/", label: "Forecast", icon: "map", hint: "Blended forecast map and district alerts" },
@@ -66,6 +67,36 @@ function Status() {
   );
 }
 
+function TrainingButton({ compact = false, onClick }: { compact?: boolean; onClick?: () => void }) {
+  const t = useTraining();
+  const pct = Math.round((100 * t.xp) / t.maxXp);
+  const open = () => {
+    onClick?.();
+    t.openHub();
+  };
+  if (compact)
+    return (
+      <button onClick={open} aria-label="Forecaster training" title="Forecaster training" className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-sm font-semibold text-[var(--accent)]">
+        ?
+      </button>
+    );
+  return (
+    <button onClick={open} className="group w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:border-[var(--accent)]">
+      <span className="flex items-center gap-2 text-sm font-medium">
+        <span className="brand-gradient grid h-6 w-6 place-items-center rounded-lg text-white">
+          <Icon name="spark" className="h-3.5 w-3.5" />
+        </span>
+        Training
+        <span className="ml-auto text-[11px] text-[var(--muted)] tabular">{t.xp}/{t.maxXp} XP</span>
+      </span>
+      <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-[var(--chip)]">
+        <span className="brand-gradient block h-full rounded-full" style={{ width: `${pct}%` }} />
+      </span>
+      <span className="mt-1.5 block text-[11px] text-[var(--muted)]">{t.allDone ? "All badges earned" : t.mission && !t.running ? `Resume: ${t.mission.title}` : "Six guided missions with badges"}</span>
+    </button>
+  );
+}
+
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5">
@@ -118,6 +149,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <Brand />
         <NavLinks path={path} />
         <div className="mt-auto space-y-3">
+          <TrainingButton />
           <Status />
           <ThemeToggle full />
           <p className="px-1 text-[11px] leading-relaxed text-[var(--faint)]">SIH26081 · NCMRWF, MoES · prototype</p>
@@ -128,6 +160,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)]/90 px-4 py-3 backdrop-blur lg:hidden">
         <Brand />
         <div className="flex items-center gap-2">
+          <TrainingButton compact />
           <ThemeToggle />
           <button
             onClick={() => setOpen(true)}
@@ -150,7 +183,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <NavLinks path={path} onNavigate={() => setOpen(false)} />
-            <div className="mt-auto">
+            <div className="mt-auto space-y-3">
+              <TrainingButton onClick={() => setOpen(false)} />
               <Status />
             </div>
           </div>

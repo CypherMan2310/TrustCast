@@ -62,7 +62,9 @@ export function Card({
   right,
   className = "",
   pad = true,
+  tour,
 }: {
+  tour?: string;
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
   children: React.ReactNode;
@@ -71,7 +73,7 @@ export function Card({
   pad?: boolean;
 }) {
   return (
-    <section className={`rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)] ${pad ? "p-5" : ""} ${className}`}>
+    <section data-tour={tour} className={`rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)] ${pad ? "p-5" : ""} ${className}`}>
       {(title || right) && (
         <div className={`flex items-start justify-between gap-3 ${pad ? "mb-4" : "px-5 pt-5 pb-3"}`}>
           <div className="min-w-0">

@@ -197,6 +197,16 @@ classifiers (gate: Brier vs ensemble fraction; fallback probabilities = ensemble
 `PipelineResult.prob_method`). After `reports/phase8/FINAL_LOCK.json` exists, `run_experiments.py` refuses
 to re-tune.
 
+### Forecaster Training (guided tutorial, `web/components/training/`)
+Optional, skippable, resumable sandbox modelled on EmberGrid's Heat Ops Training; no extra libraries.
+Six missions on the real screens (Read the Map, Open a District, Who to Trust, Replay a Disaster, Duty
+Forecaster, Trust but Verify), 100 XP + one badge each, final recap. Steps spotlight `data-tour="..."`
+elements (dim panes block everything else) and complete on app events reported via
+`useTrainingReporter()`; rules and copy in `missions.ts`. While a mission runs `setSandboxMode(true)`
+makes `apiPost` simulate writes: a training override is never stored. Progress in localStorage
+(`trustcast.training.v1`, `trustcast.training.offered`, try/catch-guarded). Launch: sidebar "Training"
+card, mobile header "?", first-visit offer (never forced). Esc pauses.
+
 ### Source matrix
 See DATA_SOURCES.md "Source matrix". Evaluation (dev + test) uses: dynamical.org true-init runs
 (IFS-ENS control as `ecmwf_ifs_ctrl`, AIFS, GFS, GEFS, IFS-ENS, AIFS-ENS) and Open-Meteo Previous

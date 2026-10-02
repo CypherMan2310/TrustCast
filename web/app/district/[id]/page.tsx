@@ -7,6 +7,7 @@ import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, Respon
 import { Button, Card, ErrorBox, Icon, Loading, Pill, Segmented, Skeleton, fmt, fmtDate, inputCls, tooltipStyle } from "@/components/ui";
 import { API_BASE, DistrictPayload, Variable, apiPost, label, useApi } from "@/lib/api";
 import { SOURCE_COLORS } from "@/lib/colors";
+import { useTrainingReporter, useTrainingRunning } from "@/components/training/TrainingProvider";
 
 interface BulletinResp {
   text: string;
@@ -17,6 +18,8 @@ interface BulletinResp {
 const OVERRIDE_SOURCES = ["ecmwf_ifs_ctrl", "ecmwf_aifs", "ncep_gfs", "ecmwf_ifs_ens", "ecmwf_aifs_ens"];
 
 function OverrideForm({ districtId, variable, days }: { districtId: string; variable: Variable; days: string[] }) {
+  const report = useTrainingReporter();
+  const sandbox = useTrainingRunning();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,7 +40,8 @@ function OverrideForm({ districtId, variable, days }: { districtId: string; vari
         reason: f.get("reason"),
         author: f.get("author"),
       });
-      setMsg(`Saved override #${r.id}: ${r.effect}`);
+      setMsg(sandbox ? r.effect : `Saved override #${r.id}: ${r.effect}`);
+      report({ type: "override-saved" });
       form.reset();
     } catch (x) {
       setErr((x as Error).message);
@@ -95,7 +99,13 @@ function DistrictInner() {
   const sp = useSearchParams();
   const variable = (sp.get("variable") as Variable) ?? "precip";
   const init = sp.get("init");
-  const [lang, setLang] = useState<"en" | "hi">("en");
+  const [lang, setLangState] = useState<"en" | "hi">("en");
+  const report = useTrainingReporter();
+  const sandbox = useTrainingRunning();
+  const setLang = (l: "en" | "hi") => {
+    setLangState(l);
+    report({ type: "bulletin-lang", lang: l });
+  };
   const [sel, setSel] = useState(1);
   const q = `variable=${variable}${init ? `&init=${init}` : ""}`;
   const d = useApi<DistrictPayload>(`/v1/district/${eid}?${q}`);
@@ -153,14 +163,17 @@ function DistrictInner() {
       </div>
 
       {/* five-day strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div data-tour="day-strip" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {dist.leads.map((l) => {
           const p = probOf(l);
           const on = l.lead_day === sel;
           return (
             <button
               key={l.lead_day}
-              onClick={() => setSel(l.lead_day)}
+              onClick={() => {
+                setSel(l.lead_day);
+                report({ type: "day-selected", lead: l.lead_day });
+              }}
               className={`rounded-2xl border p-4 text-left shadow-[var(--shadow)] transition ${
                 on ? "border-[var(--accent)] bg-[var(--accent-soft)]/60 ring-2 ring-[var(--ring)]" : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--faint)]"
               }`}
@@ -196,7 +209,7 @@ function DistrictInner() {
       </div>
 
       {cur && (
-        <Card title={`Why day ${cur.lead_day} looks like this`} subtitle={fmtDate(cur.valid_day, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}>
+        <Card tour="why" title={`Why day ${cur.lead_day} looks like this`} subtitle={fmtDate(cur.valid_day, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}>
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="space-y-3">
               <p className="text-[15px] leading-relaxed">{cur.sentence}</p>
@@ -283,6 +296,7 @@ function DistrictInner() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card
+          tour="bulletin"
           title="Bulletin"
           subtitle="Generated from the numbers above; every number is checked"
           right={
@@ -307,7 +321,12 @@ function DistrictInner() {
             </>
           )}
         </Card>
-        <Card title="Forecaster override" subtitle="Your judgement feeds the skill tracker for this district">
+        <Card
+          tour="override"
+          title="Forecaster override"
+          subtitle="Your judgement feeds the skill tracker for this district"
+          right={sandbox ? <Pill tone="accent" dot>Simulation</Pill> : undefined}
+        >
           <OverrideForm districtId={id} variable={variable} days={dist.leads.map((l) => l.valid_day)} />
         </Card>
       </div>

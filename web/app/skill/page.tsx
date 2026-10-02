@@ -6,6 +6,7 @@ import MapView from "@/components/MapView";
 import { Card, Empty, ErrorBox, Loading, PageHeader, Pill, Segmented, Skeleton, fmt, fmtDate, tooltipStyle } from "@/components/ui";
 import { LeaderboardRow, Region, SkillMap, Variable, label, useApi } from "@/lib/api";
 import { SOURCE_COLORS } from "@/lib/colors";
+import { useTrainingReporter } from "@/components/training/TrainingProvider";
 
 const BASELINES = ["equal_mean", "superensemble", "persistence", "climatology"];
 
@@ -58,7 +59,12 @@ function Forest({ rows, unit }: { rows: LeaderboardRow[]; unit: string }) {
 export default function SkillPage() {
   const [region, setRegion] = useState<Region>("rain_pilot");
   const [variable, setVariable] = useState<Variable>("precip");
-  const [lead, setLead] = useState(1);
+  const [lead, setLeadState] = useState(1);
+  const report = useTrainingReporter();
+  const setLead = (l: number) => {
+    setLeadState(l);
+    report({ type: "skill-lead", lead: l });
+  };
   const sm = useApi<SkillMap>(`/v1/skill/map?region=${region}&variable=${variable}&lead_day=${lead}`);
   const lb = useApi<{ rows: LeaderboardRow[]; period: string }>(`/v1/skill/leaderboard?region=${region}&variable=${variable}`);
   const unit = variable === "precip" ? "mm" : "°C";
@@ -107,13 +113,16 @@ export default function SkillPage() {
               ]}
             />
             <Segmented ariaLabel="Variable" value={variable} onChange={setVariable} options={[{ value: "precip", label: "Rain" }, { value: "tmax", label: "Max temp" }]} />
-            <Segmented ariaLabel="Lead day" value={lead} onChange={setLead} options={[1, 2, 3, 4, 5].map((l) => ({ value: l, label: `Day ${l}` }))} />
+            <div data-tour="skill-lead">
+              <Segmented ariaLabel="Lead day" value={lead} onChange={setLead} options={[1, 2, 3, 4, 5].map((l) => ({ value: l, label: `Day ${l}` }))} />
+            </div>
           </>
         }
       />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <Card
+          tour="skill-map"
           pad={false}
           className="overflow-hidden"
           title="Most accurate model in each grid cell"
@@ -157,7 +166,9 @@ export default function SkillPage() {
         {lb.error && <ErrorBox error={lb.error} onRetry={lb.reload} />}
         {lb.data && (
           <div className="grid gap-8 lg:grid-cols-2">
-            <Forest rows={leadRows} unit={unit} />
+            <div data-tour="forest">
+              <Forest rows={leadRows} unit={unit} />
+            </div>
             <div>
               <div className="mb-2 text-xs font-medium text-[var(--muted)]">RMSE by lead day ({unit})</div>
               <div className="h-72">
