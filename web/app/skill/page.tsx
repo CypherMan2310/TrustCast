@@ -121,7 +121,7 @@ export default function SkillPage() {
         >
           {sm.loading && <Skeleton className="h-[460px] rounded-none" />}
           {sm.error && <div className="p-5"><ErrorBox error={sm.error} onRetry={sm.reload} /></div>}
-          {sm.data && <MapView cells={cells} categorical={cat} height="min(460px, 65vh)" />}
+          {sm.data && <MapView cells={cells} categorical={cat} height="min(460px, 65vh)" formatCategory={(c) => `most accurate: ${label(c)}`} />}
         </Card>
         <Card title="Share of the region" subtitle={`Day ${lead}: cells where each model is best`}>
           {sm.loading ? (

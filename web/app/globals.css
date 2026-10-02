@@ -197,3 +197,8 @@ input[type="range"] {
 .recharts-legend-item-text {
   color: var(--muted) !important;
 }
+
+/* hover label on the map never blocks clicks */
+.tc-hover {
+  pointer-events: none;
+}

@@ -89,15 +89,17 @@ function OverrideForm({ districtId, variable, days }: { districtId: string; vari
 }
 
 function DistrictInner() {
-  const { id } = useParams<{ id: string }>();
+  const raw = useParams<{ id: string }>().id;
+  const id = decodeURIComponent(raw); // ids can contain non-ASCII letters (e.g. telangāna-...)
+  const eid = encodeURIComponent(id);
   const sp = useSearchParams();
   const variable = (sp.get("variable") as Variable) ?? "precip";
   const init = sp.get("init");
   const [lang, setLang] = useState<"en" | "hi">("en");
   const [sel, setSel] = useState(1);
   const q = `variable=${variable}${init ? `&init=${init}` : ""}`;
-  const d = useApi<DistrictPayload>(`/v1/district/${id}?${q}`);
-  const b = useApi<BulletinResp>(`/v1/bulletin/${id}?${q}&lang=${lang}`);
+  const d = useApi<DistrictPayload>(`/v1/district/${eid}?${q}`);
+  const b = useApi<BulletinResp>(`/v1/bulletin/${eid}?${q}&lang=${lang}`);
 
   if (d.loading)
     return (
@@ -286,7 +288,7 @@ function DistrictInner() {
           right={
             <div className="flex shrink-0 items-center gap-2">
               <Segmented size="sm" value={lang} onChange={setLang} options={[{ value: "en", label: "English" }, { value: "hi", label: "हिन्दी" }]} ariaLabel="Bulletin language" />
-              <a className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border border-[var(--border)] px-2.5 text-xs font-medium hover:bg-[var(--chip)]" href={`${API_BASE}/v1/alerts/cap/${id}?${q}`} target="_blank" rel="noreferrer">
+              <a className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border border-[var(--border)] px-2.5 text-xs font-medium hover:bg-[var(--chip)]" href={`${API_BASE}/v1/alerts/cap/${eid}?${q}`} target="_blank" rel="noreferrer">
                 CAP XML <Icon name="external" className="h-3.5 w-3.5" />
               </a>
             </div>

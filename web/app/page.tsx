@@ -50,6 +50,11 @@ export default function Home() {
   const q = `region=${region}&variable=${variable}&lead_day=${lead}&layer=${encodeURIComponent(layer)}${init ? `&init=${init}` : ""}`;
   const grid = useApi<GridLayer>(`/v1/forecast/grid?${q}`);
   const meta = useApi<{ regions: Record<string, { districts: GeoJSON.FeatureCollection | null }> }>("/v1/meta/regions");
+  // districts with no area inside the pilot region (clipping slivers) have no forecast cells
+  const districts = useMemo(() => {
+    const fc = meta.data?.regions[region]?.districts;
+    return fc ? { ...fc, features: fc.features.filter((f) => Number(f.properties?.coverage ?? 1) > 0) } : null;
+  }, [meta.data, region]);
   const alerts = useApi<Alerts>(`/v1/alerts/district?region=${region}&variable=${variable}${init ? `&init=${init}` : ""}`);
 
   const g = grid.data;
@@ -94,7 +99,7 @@ export default function Home() {
     setLayer("final");
     setInit("");
   };
-  const openDistrict = (id: string) => router.push(`/district/${id}?variable=${variable}${init ? `&init=${init}` : ""}`);
+  const openDistrict = (id: string) => router.push(`/district/${encodeURIComponent(id)}?variable=${variable}${init ? `&init=${init}` : ""}`);
 
   return (
     <div className="space-y-6">
@@ -231,7 +236,7 @@ export default function Home() {
                 cells={cells}
                 stops={stops}
                 height="min(560px, 70vh)"
-                districts={meta.data?.regions[region]?.districts ?? null}
+                districts={districts}
                 onDistrictClick={openDistrict}
                 formatValue={(v) => (isProb ? `${Math.round(v * 100)} %` : `${fmt(v)} ${units}`)}
               />
@@ -267,7 +272,7 @@ export default function Home() {
                   return (
                     <li key={`${a.district_id}-${a.lead_day}`}>
                       <Link
-                        href={`/district/${a.district_id}?variable=${variable}${init ? `&init=${init}` : ""}`}
+                        href={`/district/${encodeURIComponent(a.district_id)}?variable=${variable}${init ? `&init=${init}` : ""}`}
                         className="group flex gap-3 rounded-xl border border-transparent p-2.5 transition hover:border-[var(--border)] hover:bg-[var(--surface-2)]"
                       >
                         <span className={`w-1 shrink-0 rounded-full ${lv.bar}`} />

@@ -3,6 +3,9 @@
 import * as maplibregl from "maplibre-gl";
 import { useEffect, useRef } from "react";
 import { stepExpression } from "@/lib/colors";
+import { featureNear } from "@/lib/geo";
+
+const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[c] as string);
 
 export interface Cell {
   lat: number;
@@ -18,6 +21,7 @@ interface Props {
   districts?: GeoJSON.FeatureCollection | null;
   onDistrictClick?: (id: string, name: string) => void;
   formatValue?: (v: number) => string;
+  formatCategory?: (c: string) => string;
   height?: number | string;
 }
 
@@ -51,11 +55,11 @@ const firstSymbol = (m: maplibregl.Map) => m.getStyle().layers.find((l) => l.typ
 
 const isDark = () => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark";
 
-export default function MapView({ cells, stops, categorical, districts, onDistrictClick, formatValue, height = 520 }: Props) {
+export default function MapView({ cells, stops, categorical, districts, onDistrictClick, formatValue, formatCategory, height = 520 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const loaded = useRef(false);
-  const latest = useRef({ cells, stops, categorical, districts, onDistrictClick, formatValue });
+  const latest = useRef({ cells, stops, categorical, districts, onDistrictClick, formatValue, formatCategory });
 
   const draw = () => {
     const m = map.current;
@@ -78,7 +82,6 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
       if (dsrc) dsrc.setData(ds);
       else {
         m.addSource("districts", { type: "geojson", data: ds });
-        m.addLayer({ id: "districts-hit", type: "fill", source: "districts", paint: { "fill-color": "#000", "fill-opacity": 0 } }, firstSymbol(m));
         m.addLayer({ id: "districts-line", type: "line", source: "districts", paint: { "line-color": isDark() ? "#cbd5e1" : "#334155", "line-width": 0.8, "line-opacity": 0.8 } }, firstSymbol(m));
       }
     }
@@ -98,32 +101,46 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
     if (!ref.current || map.current) return;
     const m = new maplibregl.Map({ container: ref.current, style: basemap(isDark()), center: [77, 15], zoom: 5, attributionControl: { compact: true } });
     map.current = m;
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __tcMap?: maplibregl.Map }).__tcMap = m; // dev-only handle for automated checks
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+    // hover label: offset from the cursor and click-through (see .tc-hover in globals.css), so it never swallows a click
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: "tc-hover", maxWidth: "260px" });
     // draw as soon as the style is parsed; waiting for "load" would also wait for every basemap tile
     m.once("style.load", () => {
       loaded.current = true;
       m.getContainer().dataset.loaded = "1"; // marker for automated checks
       draw();
     });
+    // District lookup uses the boundary geometry itself (lib/geo), not the rendered feature index,
+    // so every district is clickable regardless of layer order, opacity or tile state.
+    const districtAt = (pt: maplibregl.Point): GeoJSON.Feature | null => {
+      const fc = latest.current.districts;
+      if (!fc) return null;
+      const tol = 5; // px: clicks on borders or tiny districts still register
+      const probes = [[0, 0], [tol, 0], [-tol, 0], [0, tol], [0, -tol], [tol, tol], [-tol, -tol], [tol, -tol], [-tol, tol]].map(([dx, dy]) => {
+        const ll = m.unproject([pt.x + dx, pt.y + dy]);
+        return [ll.lng, ll.lat] as [number, number];
+      });
+      return featureNear(fc, probes);
+    };
     m.on("mousemove", (e) => {
-      const f = m.queryRenderedFeatures(e.point, { layers: ["cells-fill", "districts-hit"].filter((l) => m.getLayer(l)) });
-      const cell = f.find((x) => x.layer.id === "cells-fill");
-      const dist = f.find((x) => x.layer.id === "districts-hit");
+      const cell = m.getLayer("cells-fill") ? m.queryRenderedFeatures(e.point, { layers: ["cells-fill"] })[0] : undefined;
+      const dist = latest.current.onDistrictClick || latest.current.districts ? districtAt(e.point) : null;
       if (!cell && !dist) {
         popup.remove();
         m.getCanvas().style.cursor = "";
         return;
       }
-      m.getCanvas().style.cursor = dist ? "pointer" : "";
-      const fv = latest.current.formatValue;
-      const val = cell ? (cell.properties.cat ? String(cell.properties.cat) : fv ? fv(Number(cell.properties.v)) : String(cell.properties.v)) : "";
-      const name = dist ? `<b>${dist.properties.district}</b>, ${dist.properties.state}<br/>` : "";
-      popup.setLngLat(e.lngLat).setHTML(`<div style="font-size:12px">${name}${val}</div>`).addTo(m);
+      m.getCanvas().style.cursor = dist && latest.current.onDistrictClick ? "pointer" : "";
+      const { formatValue: fv, formatCategory: fc } = latest.current;
+      const val = cell ? (cell.properties.cat ? (fc ? fc(String(cell.properties.cat)) : String(cell.properties.cat)) : fv ? fv(Number(cell.properties.v)) : String(cell.properties.v)) : "";
+      const name = dist ? `<b>${esc(String(dist.properties?.district))}</b>, ${esc(String(dist.properties?.state))}<br/>` : "";
+      popup.setLngLat(e.lngLat).setHTML(`<div style="font-size:12px">${name}${esc(val)}</div>`).addTo(m);
     });
-    m.on("click", "districts-hit", (e) => {
-      const f = e.features?.[0];
-      if (f && latest.current.onDistrictClick) latest.current.onDistrictClick(String(f.properties.district_id), String(f.properties.district));
+    m.on("click", (e) => {
+      const cb = latest.current.onDistrictClick;
+      const f = cb ? districtAt(e.point) : null;
+      if (cb && f) cb(String(f.properties?.district_id), String(f.properties?.district));
     });
     const onTheme = () => {
       // swap the basemap style and carry the data sources/layers over (inserted under the labels)
@@ -155,9 +172,9 @@ export default function MapView({ cells, stops, categorical, districts, onDistri
   }, []);
 
   useEffect(() => {
-    latest.current = { cells, stops, categorical, districts, onDistrictClick, formatValue };
+    latest.current = { cells, stops, categorical, districts, onDistrictClick, formatValue, formatCategory };
     draw();
-  }, [cells, stops, categorical, districts, onDistrictClick, formatValue]);
+  }, [cells, stops, categorical, districts, onDistrictClick, formatValue, formatCategory]);
 
   return <div ref={ref} style={{ height }} className="w-full overflow-hidden rounded-2xl" aria-label="Forecast map" role="region" />;
 }
