@@ -4,8 +4,8 @@
 // heavy 64.5-115.5, very heavy 115.6-204.4, extremely heavy >= 204.5
 export const RAIN_STOPS: [number, string][] = [
   [0, "rgba(0,0,0,0)"],
-  [0.1, "#d8f0fb"],
-  [2.5, "#9ed4f2"],
+  [0.1, "#c4e6f8"],
+  [2.5, "#86c8ef"],
   [15.6, "#4aa3e0"],
   [35, "#1f6fc4"],
   [64.5, "#f2c14e"],
